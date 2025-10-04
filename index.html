@@ -9,10 +9,6 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
-  <!-- TimeDimension -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet-timedimension/1.1.0/leaflet.timedimension.control.min.css" />
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet-timedimension/1.1.0/leaflet.timedimension.min.js"></script>
-
   <!-- Heatmap -->
   <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
 
@@ -57,18 +53,8 @@
       "Catremerio": [45.822366845838566, 9.633348279863643]
     };
 
-    // Mappa con TimeDimension
-    const map = L.map('map', {
-      center: [45.8487, 9.6660],
-      zoom: 13,
-      timeDimension: true,
-      timeDimensionControl: true,
-      timeDimensionOptions: {
-        timeInterval: "P5D/" + new Date().toISOString(),
-        period: "P1D"
-      }
-    });
-
+    // Mappa
+    const map = L.map('map').setView([45.8487, 9.6660], 13);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 18,
       attribution: '© OpenStreetMap'
@@ -79,45 +65,55 @@
       L.marker(locations[name]).addTo(map).bindPopup(name);
     }
 
-    // Fetch dati Open-Meteo
+    // Funzione per fetch dati Open-Meteo
     async function getData(lat, lon) {
       const today = new Date();
       const startHist = new Date(today); startHist.setDate(today.getDate()-5);
       const endHist = new Date(today); endHist.setDate(today.getDate()-1);
 
-      const forecastUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=precipitation_sum,precipitation_probability_max,precipitation_max&forecast_days=5&timezone=auto`;
-      const historyUrl = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${startHist.toISOString().split('T')[0]}&end_date=${endHist.toISOString().split('T')[0]}&daily=precipitation_sum,precipitation_max&timezone=auto`;
+      // Forecast
+      const forecastUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=precipitation_sum,precipitation_probability_max,precipitation_max&hourly=precipitation,precipitation_probability&timezone=Europe/Rome&forecast_days=5`;
+
+      // Storico
+      const historyUrl = `https://historical-forecast-api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&start_date=${startHist.toISOString().split('T')[0]}&end_date=${endHist.toISOString().split('T')[0]}&daily=precipitation_sum,precipitation_max&hourly=precipitation,precipitation_probability&timezone=Europe/Rome`;
 
       const [fResp, hResp] = await Promise.all([fetch(forecastUrl), fetch(historyUrl)]);
-      return [await fResp.json(), await hResp.json()];
+      const forecast = await fResp.json();
+      const history = await hResp.json();
+
+      return [forecast, history];
     }
 
     async function loadData() {
       let forecastAgg = {};
       let historyAgg = {};
-      let historyByDay = {}; // per heatmap
+      let historyByDay = {};
 
       for (let name in locations) {
         const [lat, lon] = locations[name];
         const [forecast, history] = await getData(lat, lon);
 
-        forecast.daily.time.forEach((d, i) => {
-          if (!forecastAgg[d]) forecastAgg[d] = {prob:0,sum:0,max:0,count:0};
-          forecastAgg[d].prob += forecast.daily.precipitation_probability_max[i] || 0;
-          forecastAgg[d].sum += forecast.daily.precipitation_sum[i] || 0;
-          forecastAgg[d].max += forecast.daily.precipitation_max[i] || 0;
-          forecastAgg[d].count++;
-        });
+        if (forecast && forecast.daily) {
+          forecast.daily.time.forEach((d, i) => {
+            if (!forecastAgg[d]) forecastAgg[d] = {prob:0,sum:0,max:0,count:0};
+            forecastAgg[d].prob += forecast.daily.precipitation_probability_max[i] || 0;
+            forecastAgg[d].sum += forecast.daily.precipitation_sum[i] || 0;
+            forecastAgg[d].max += forecast.daily.precipitation_max[i] || 0;
+            forecastAgg[d].count++;
+          });
+        }
 
-        history.daily.time.forEach((d, i) => {
-          if (!historyAgg[d]) historyAgg[d] = {sum:0,max:0,count:0};
-          historyAgg[d].sum += history.daily.precipitation_sum[i] || 0;
-          historyAgg[d].max += history.daily.precipitation_max[i] || 0;
-          historyAgg[d].count++;
+        if (history && history.daily) {
+          history.daily.time.forEach((d, i) => {
+            if (!historyAgg[d]) historyAgg[d] = {sum:0,max:0,count:0};
+            historyAgg[d].sum += history.daily.precipitation_sum[i] || 0;
+            historyAgg[d].max += history.daily.precipitation_max[i] || 0;
+            historyAgg[d].count++;
 
-          if (!historyByDay[d]) historyByDay[d] = [];
-          historyByDay[d].push([lat, lon, history.daily.precipitation_sum[i]]);
-        });
+            if (!historyByDay[d]) historyByDay[d] = [];
+            historyByDay[d].push([lat, lon, history.daily.precipitation_sum[i]]);
+          });
+        }
       }
 
       // Tabelle forecast
@@ -145,23 +141,19 @@
 
       // Heatmap animata
       const times = Object.keys(historyByDay).sort();
-      const layers = times.map(date => {
-        return L.heatLayer(historyByDay[date], {radius: 40, blur: 25, maxZoom: 13});
-      });
-
       let index = 0;
       setInterval(() => {
-        if (layers.length > 0) {
-          if (map.hasLayer(layers[index])) map.removeLayer(layers[index]);
-          index = (index + 1) % layers.length;
-          layers[index].addTo(map);
+        if (times.length > 0) {
+          if (map._heatLayer) map.removeLayer(map._heatLayer);
+          const points = historyByDay[times[index]];
+          map._heatLayer = L.heatLayer(points, {radius: 40, blur: 25, maxZoom: 13});
+          map._heatLayer.addTo(map);
+          index = (index + 1) % times.length;
         }
-      }, 2000); // cambia giorno ogni 2 secondi
+      }, 2000);
     }
 
     loadData();
   </script>
 </body>
 </html>
-
-
