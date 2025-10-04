@@ -14,18 +14,36 @@
 
   <style>
     body { margin:0; font-family: Arial, sans-serif; }
-    #map { height: 70vh; width: 100%; }
-    table { border-collapse: collapse; margin: 20px auto; width: 90%; }
-    th, td { border: 1px solid #ccc; padding: 6px; text-align: center; }
-    th { background: #f0f0f0; }
-    h2 { text-align: center; margin-top: 20px; }
+    #map { height: 60vh; width: 100%; }
+    .controls {
+      display: flex; align-items: center; gap: 12px;
+      padding: 10px 16px; border-top: 1px solid #eee;
+    }
+    .controls label { font-weight: bold; }
+    .date-display { min-width: 160px; font-family: monospace; }
+    table { border-collapse: collapse; margin: 20px auto; width: 95%; max-width: 1100px; }
+    th, td { border: 1px solid #ccc; padding: 6px 8px; text-align: center; }
+    th { background: #f7f7f7; }
+    h2 { text-align: center; margin: 20px 0 8px; }
+    .loading { text-align: center; padding: 10px; color: #666; }
+    .legend {
+      margin: 0 16px 12px 16px; font-size: 13px; color: #444;
+    }
   </style>
 </head>
 <body>
   <div id="map"></div>
 
+  <div class="controls">
+    <label for="daySlider">Giorno storico:</label>
+    <input id="daySlider" type="range" min="0" max="0" value="0" step="1" />
+    <span id="dayLabel" class="date-display">--</span>
+    <span id="intensityLabel" class="legend">Heatmap basata su precipitation_sum (mm/giorno)</span>
+  </div>
+
   <h2>Previsioni precipitazioni (5 giorni)</h2>
-  <table id="forecastTable">
+  <div id="forecastLoading" class="loading">Caricamento previsioni…</div>
+  <table id="forecastTable" style="display:none;">
     <thead>
       <tr><th>Data</th><th>Probabilità (%)</th><th>Cumulata (mm)</th><th>Intensità max (mm/h)</th></tr>
     </thead>
@@ -33,7 +51,8 @@
   </table>
 
   <h2>Precipitazioni cadute (ultimi 5 giorni)</h2>
-  <table id="historyTable">
+  <div id="historyLoading" class="loading">Caricamento storico…</div>
+  <table id="historyTable" style="display:none;">
     <thead>
       <tr><th>Data</th><th>Cumulata (mm)</th><th>Intensità max (mm/h)</th></tr>
     </thead>
@@ -41,7 +60,7 @@
   </table>
 
   <script>
-    // Località
+    // --- Località (nome: [lat, lon]) ---
     const locations = {
       "Sussia": [45.833, 9.633],
       "Piazzacava": [45.850, 9.657],
@@ -53,107 +72,172 @@
       "Catremerio": [45.822366845838566, 9.633348279863643]
     };
 
-    // Mappa
+    // --- Mappa base ---
     const map = L.map('map').setView([45.8487, 9.6660], 13);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 18,
       attribution: '© OpenStreetMap'
     }).addTo(map);
 
-    // Marker
+    // Marker stazioni (popup aggiornabile)
+    const stationMarkers = {};
     for (let name in locations) {
-      L.marker(locations[name]).addTo(map).bindPopup(name);
+      const [lat, lon] = locations[name];
+      stationMarkers[name] = L.marker([lat, lon]).addTo(map).bindPopup(`${name}<br/>Cumulata: -- mm`);
     }
 
-    // Funzione per fetch dati Open-Meteo
-    async function getData(lat, lon) {
-      const today = new Date();
-      const startHist = new Date(today); startHist.setDate(today.getDate()-5);
-      const endHist = new Date(today); endHist.setDate(today.getDate()-1);
+    // --- Utility date ---
+    function toISODate(d) { return d.toISOString().split('T')[0]; }
+    function fmt(val, digits=1) { return (val ?? 0).toFixed(digits); }
 
-      // Forecast
-      const forecastUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=precipitation_sum,precipitation_probability_max,precipitation_max&hourly=precipitation,precipitation_probability&timezone=Europe/Rome&forecast_days=5`;
+    // --- Costruisci finestre temporali ---
+    const today = new Date();
+    const startHist = new Date(today); startHist.setDate(today.getDate() - 5);
+    const endHist = new Date(today); endHist.setDate(today.getDate() - 1);
 
-      // Storico
-      const historyUrl = `https://historical-forecast-api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&start_date=${startHist.toISOString().split('T')[0]}&end_date=${endHist.toISOString().split('T')[0]}&daily=precipitation_sum,precipitation_max&hourly=precipitation,precipitation_probability&timezone=Europe/Rome`;
+    // --- Fetch dati Open-Meteo per una località ---
+    async function fetchForLocation(lat, lon) {
+      // Forecast (prossimi 5 giorni)
+      const forecastUrl =
+        `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
+        `&daily=precipitation_sum,precipitation_probability_max,precipitation_max` +
+        `&hourly=precipitation,precipitation_probability` +
+        `&timezone=Europe/Rome&forecast_days=5`;
+
+      // Storico (ultimi 5 giorni, da startHist a endHist)
+      const historyUrl =
+        `https://historical-forecast-api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
+        `&start_date=${toISODate(startHist)}&end_date=${toISODate(endHist)}` +
+        `&daily=precipitation_sum,precipitation_max` +
+        `&hourly=precipitation,precipitation_probability` +
+        `&timezone=Europe/Rome`;
 
       const [fResp, hResp] = await Promise.all([fetch(forecastUrl), fetch(historyUrl)]);
       const forecast = await fResp.json();
       const history = await hResp.json();
-
-      return [forecast, history];
+      return { forecast, history };
     }
 
-    async function loadData() {
-      let forecastAgg = {};
-      let historyAgg = {};
-      let historyByDay = {};
+    // --- Aggregazione su tutte le località ---
+    async function loadAll() {
+      const forecastAgg = {};     // date: {prob,sum,max,count}
+      const historyAgg = {};      // date: {sum,max,count}
+      const historyByDay = {};    // date: [{lat,lon,value}] per heatmap
+      const historyPerStation = {}; // date: { stationName: {sum,max} }
 
       for (let name in locations) {
         const [lat, lon] = locations[name];
-        const [forecast, history] = await getData(lat, lon);
+        let data;
+        try { data = await fetchForLocation(lat, lon); }
+        catch (e) { console.warn("Errore fetch", name, e); continue; }
 
-        if (forecast && forecast.daily) {
-          forecast.daily.time.forEach((d, i) => {
-            if (!forecastAgg[d]) forecastAgg[d] = {prob:0,sum:0,max:0,count:0};
-            forecastAgg[d].prob += forecast.daily.precipitation_probability_max[i] || 0;
-            forecastAgg[d].sum += forecast.daily.precipitation_sum[i] || 0;
-            forecastAgg[d].max += forecast.daily.precipitation_max[i] || 0;
+        const f = data.forecast?.daily;
+        if (f && f.time) {
+          f.time.forEach((d, i) => {
+            if (!forecastAgg[d]) forecastAgg[d] = { prob:0, sum:0, max:0, count:0 };
+            forecastAgg[d].prob += Number(f.precipitation_probability_max?.[i] ?? 0);
+            forecastAgg[d].sum  += Number(f.precipitation_sum?.[i] ?? 0);
+            forecastAgg[d].max  += Number(f.precipitation_max?.[i] ?? 0);
             forecastAgg[d].count++;
           });
         }
 
-        if (history && history.daily) {
-          history.daily.time.forEach((d, i) => {
-            if (!historyAgg[d]) historyAgg[d] = {sum:0,max:0,count:0};
-            historyAgg[d].sum += history.daily.precipitation_sum[i] || 0;
-            historyAgg[d].max += history.daily.precipitation_max[i] || 0;
+        const h = data.history?.daily;
+        if (h && h.time) {
+          h.time.forEach((d, i) => {
+            const sum = Number(h.precipitation_sum?.[i] ?? 0);
+            const max = Number(h.precipitation_max?.[i] ?? 0);
+
+            if (!historyAgg[d]) historyAgg[d] = { sum:0, max:0, count:0 };
+            historyAgg[d].sum += sum;
+            historyAgg[d].max += max;
             historyAgg[d].count++;
 
             if (!historyByDay[d]) historyByDay[d] = [];
-            historyByDay[d].push([lat, lon, history.daily.precipitation_sum[i]]);
+            historyByDay[d].push([lat, lon, sum]);
+
+            if (!historyPerStation[d]) historyPerStation[d] = {};
+            historyPerStation[d][name] = { sum, max };
           });
         }
       }
 
-      // Tabelle forecast
-      const fTable = document.querySelector("#forecastTable tbody");
-      for (let d in forecastAgg) {
+      // --- Popola tabella forecast (media sulle località) ---
+      const fTbody = document.querySelector("#forecastTable tbody");
+      const fLoading = document.getElementById("forecastLoading");
+      const fTable = document.getElementById("forecastTable");
+      const forecastDates = Object.keys(forecastAgg).sort();
+
+      forecastDates.forEach(d => {
         const row = forecastAgg[d];
-        fTable.innerHTML += `<tr>
-          <td>${d}</td>
-          <td>${(row.prob/row.count).toFixed(0)}</td>
-          <td>${(row.sum/row.count).toFixed(1)}</td>
-          <td>${(row.max/row.count).toFixed(1)}</td>
-        </tr>`;
-      }
+        const probAvg = row.count ? (row.prob / row.count) : 0;
+        const sumAvg  = row.count ? (row.sum / row.count) : 0;
+        const maxAvg  = row.count ? (row.max / row.count) : 0;
+        fTbody.insertAdjacentHTML("beforeend",
+          `<tr><td>${d}</td><td>${fmt(probAvg,0)}</td><td>${fmt(sumAvg,1)}</td><td>${fmt(maxAvg,1)}</td></tr>`);
+      });
+      fLoading.style.display = "none";
+      fTable.style.display = "";
 
-      // Tabelle storico
-      const hTable = document.querySelector("#historyTable tbody");
-      for (let d in historyAgg) {
+      // --- Popola tabella storico (media sulle località) ---
+      const hTbody = document.querySelector("#historyTable tbody");
+      const hLoading = document.getElementById("historyLoading");
+      const hTable = document.getElementById("historyTable");
+      const historyDates = Object.keys(historyAgg).sort();
+
+      historyDates.forEach(d => {
         const row = historyAgg[d];
-        hTable.innerHTML += `<tr>
-          <td>${d}</td>
-          <td>${(row.sum/row.count).toFixed(1)}</td>
-          <td>${(row.max/row.count).toFixed(1)}</td>
-        </tr>`;
+        const sumAvg = row.count ? (row.sum / row.count) : 0;
+        const maxAvg = row.count ? (row.max / row.count) : 0;
+        hTbody.insertAdjacentHTML("beforeend",
+          `<tr><td>${d}</td><td>${fmt(sumAvg,1)}</td><td>${fmt(maxAvg,1)}</td></tr>`);
+      });
+      hLoading.style.display = "none";
+      hTable.style.display = "";
+
+      // --- Slider temporale per heatmap ---
+      const daySlider = document.getElementById("daySlider");
+      const dayLabel = document.getElementById("dayLabel");
+      const times = historyDates;
+      daySlider.min = 0;
+      daySlider.max = Math.max(0, times.length - 1);
+      daySlider.value = daySlider.max;
+
+      // --- Heatmap layer gestito ---
+      let heatLayer = null;
+      function updateHeatmap(idx) {
+        const date = times[idx];
+        dayLabel.textContent = date ?? "--";
+        const points = historyByDay[date] ?? [];
+
+        if (heatLayer) { map.removeLayer(heatLayer); }
+        // Radius/blur tarati per area montana
+        heatLayer = L.heatLayer(points, { radius: 45, blur: 28, maxZoom: 13 });
+        heatLayer.addTo(map);
+
+        // Aggiorna popup dei marker con cumulata del giorno selezionato
+        const perStation = historyPerStation[date] ?? {};
+        for (let name in stationMarkers) {
+          const val = perStation[name]?.sum ?? null;
+          const txt = (val === null) ? "--" : fmt(val, 1);
+          stationMarkers[name].setPopupContent(`${name}<br/>Cumulata: ${txt} mm`);
+        }
       }
 
-      // Heatmap animata
-      const times = Object.keys(historyByDay).sort();
-      let index = 0;
-      setInterval(() => {
-        if (times.length > 0) {
-          if (map._heatLayer) map.removeLayer(map._heatLayer);
-          const points = historyByDay[times[index]];
-          map._heatLayer = L.heatLayer(points, {radius: 40, blur: 25, maxZoom: 13});
-          map._heatLayer.addTo(map);
-          index = (index + 1) % times.length;
-        }
-      }, 2000);
+      // Eventi slider
+      daySlider.addEventListener("input", () => updateHeatmap(Number(daySlider.value)));
+
+      // Inizializza heatmap sul giorno più recente
+      updateHeatmap(Number(daySlider.value));
     }
 
-    loadData();
+    // Avvio
+    loadAll().catch(e => {
+      console.error("Errore generale caricamento dati:", e);
+      document.getElementById("forecastLoading").textContent = "Errore nel caricamento previsioni.";
+      document.getElementById("historyLoading").textContent = "Errore nel caricamento storico.";
+    });
   </script>
 </body>
 </html>
+
