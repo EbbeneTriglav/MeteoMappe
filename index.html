@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Mappa Precipitazioni - San Pellegrino Terme</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- Fogli di stile Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+
+  <style>
+    #map {
+      height: 100vh;
+      width: 100%;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <!-- Script Leaflet -->
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script>
+    // Crea la mappa centrata su San Pellegrino Terme
+    var map = L.map('map').setView([45.8487, 9.6660], 13);
+
+    // Aggiunge tile OpenStreetMap
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 18,
+      attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+
+    // Località con coordinate
+    var locations = {
+      "Sussia": [45.833, 9.633],
+      "Piazzacava": [45.850, 9.657],
+      "Foldone": [45.8491, 9.6161],
+      "Monte Molinasco": [45.854429482557435, 9.64178530454687],
+      "San Pellegrino Terme": [45.848687593657786, 9.666033864451745],
+      "Aplecchio": [45.842273445543654, 9.656271242169542],
+      "Vettarola": [45.846151165569296, 9.630560511873826],
+      "Catremerio": [45.822366845838566, 9.633348279863643]
+    };
+
+    // Aggiunge marker per ogni località
+    for (var name in locations) {
+      var coords = locations[name];
+      L.marker(coords).addTo(map).bindPopup(name);
+    }
+  </script>
+</body>
+</html>
