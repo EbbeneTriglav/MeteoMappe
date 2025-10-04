@@ -1,37 +1,52 @@
 <!DOCTYPE html>
-<html>
+<html lang="it">
 <head>
   <meta charset="utf-8" />
-  <title>Mappa Precipitazioni - San Pellegrino Terme</title>
+  <title>Mappa Meteo - San Pellegrino Terme</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <!-- Fogli di stile Leaflet -->
+  <!-- Leaflet -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+  <!-- TimeDimension -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet-timedimension/1.1.0/leaflet.timedimension.control.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet-timedimension/1.1.0/leaflet.timedimension.min.js"></script>
+
+  <!-- Heatmap -->
+  <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
 
   <style>
-    #map {
-      height: 100vh;
-      width: 100%;
-    }
+    body { margin:0; font-family: Arial, sans-serif; }
+    #map { height: 70vh; width: 100%; }
+    table { border-collapse: collapse; margin: 20px auto; width: 90%; }
+    th, td { border: 1px solid #ccc; padding: 6px; text-align: center; }
+    th { background: #f0f0f0; }
+    h2 { text-align: center; margin-top: 20px; }
   </style>
 </head>
 <body>
   <div id="map"></div>
 
-  <!-- Script Leaflet -->
-  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <h2>Previsioni precipitazioni (5 giorni)</h2>
+  <table id="forecastTable">
+    <thead>
+      <tr><th>Data</th><th>Probabilità (%)</th><th>Cumulata (mm)</th><th>Intensità max (mm/h)</th></tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <h2>Precipitazioni cadute (ultimi 5 giorni)</h2>
+  <table id="historyTable">
+    <thead>
+      <tr><th>Data</th><th>Cumulata (mm)</th><th>Intensità max (mm/h)</th></tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
   <script>
-    // Crea la mappa centrata su San Pellegrino Terme
-    var map = L.map('map').setView([45.8487, 9.6660], 13);
-
-    // Aggiunge tile OpenStreetMap
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 18,
-      attribution: '© OpenStreetMap contributors'
-    }).addTo(map);
-
-    // Località con coordinate
-    var locations = {
+    // Località
+    const locations = {
       "Sussia": [45.833, 9.633],
       "Piazzacava": [45.850, 9.657],
       "Foldone": [45.8491, 9.6161],
@@ -42,11 +57,111 @@
       "Catremerio": [45.822366845838566, 9.633348279863643]
     };
 
-    // Aggiunge marker per ogni località
-    for (var name in locations) {
-      var coords = locations[name];
-      L.marker(coords).addTo(map).bindPopup(name);
+    // Mappa con TimeDimension
+    const map = L.map('map', {
+      center: [45.8487, 9.6660],
+      zoom: 13,
+      timeDimension: true,
+      timeDimensionControl: true,
+      timeDimensionOptions: {
+        timeInterval: "P5D/" + new Date().toISOString(),
+        period: "P1D"
+      }
+    });
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 18,
+      attribution: '© OpenStreetMap'
+    }).addTo(map);
+
+    // Marker
+    for (let name in locations) {
+      L.marker(locations[name]).addTo(map).bindPopup(name);
     }
+
+    // Fetch dati Open-Meteo
+    async function getData(lat, lon) {
+      const today = new Date();
+      const startHist = new Date(today); startHist.setDate(today.getDate()-5);
+      const endHist = new Date(today); endHist.setDate(today.getDate()-1);
+
+      const forecastUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=precipitation_sum,precipitation_probability_max,precipitation_max&forecast_days=5&timezone=auto`;
+      const historyUrl = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${startHist.toISOString().split('T')[0]}&end_date=${endHist.toISOString().split('T')[0]}&daily=precipitation_sum,precipitation_max&timezone=auto`;
+
+      const [fResp, hResp] = await Promise.all([fetch(forecastUrl), fetch(historyUrl)]);
+      return [await fResp.json(), await hResp.json()];
+    }
+
+    async function loadData() {
+      let forecastAgg = {};
+      let historyAgg = {};
+      let historyByDay = {}; // per heatmap
+
+      for (let name in locations) {
+        const [lat, lon] = locations[name];
+        const [forecast, history] = await getData(lat, lon);
+
+        forecast.daily.time.forEach((d, i) => {
+          if (!forecastAgg[d]) forecastAgg[d] = {prob:0,sum:0,max:0,count:0};
+          forecastAgg[d].prob += forecast.daily.precipitation_probability_max[i] || 0;
+          forecastAgg[d].sum += forecast.daily.precipitation_sum[i] || 0;
+          forecastAgg[d].max += forecast.daily.precipitation_max[i] || 0;
+          forecastAgg[d].count++;
+        });
+
+        history.daily.time.forEach((d, i) => {
+          if (!historyAgg[d]) historyAgg[d] = {sum:0,max:0,count:0};
+          historyAgg[d].sum += history.daily.precipitation_sum[i] || 0;
+          historyAgg[d].max += history.daily.precipitation_max[i] || 0;
+          historyAgg[d].count++;
+
+          if (!historyByDay[d]) historyByDay[d] = [];
+          historyByDay[d].push([lat, lon, history.daily.precipitation_sum[i]]);
+        });
+      }
+
+      // Tabelle forecast
+      const fTable = document.querySelector("#forecastTable tbody");
+      for (let d in forecastAgg) {
+        const row = forecastAgg[d];
+        fTable.innerHTML += `<tr>
+          <td>${d}</td>
+          <td>${(row.prob/row.count).toFixed(0)}</td>
+          <td>${(row.sum/row.count).toFixed(1)}</td>
+          <td>${(row.max/row.count).toFixed(1)}</td>
+        </tr>`;
+      }
+
+      // Tabelle storico
+      const hTable = document.querySelector("#historyTable tbody");
+      for (let d in historyAgg) {
+        const row = historyAgg[d];
+        hTable.innerHTML += `<tr>
+          <td>${d}</td>
+          <td>${(row.sum/row.count).toFixed(1)}</td>
+          <td>${(row.max/row.count).toFixed(1)}</td>
+        </tr>`;
+      }
+
+      // Heatmap animata
+      const times = Object.keys(historyByDay).sort();
+      const layers = times.map(date => {
+        return L.heatLayer(historyByDay[date], {radius: 40, blur: 25, maxZoom: 13});
+      });
+
+      let index = 0;
+      setInterval(() => {
+        if (layers.length > 0) {
+          if (map.hasLayer(layers[index])) map.removeLayer(layers[index]);
+          index = (index + 1) % layers.length;
+          layers[index].addTo(map);
+        }
+      }, 2000); // cambia giorno ogni 2 secondi
+    }
+
+    loadData();
   </script>
 </body>
 </html>
+
+
