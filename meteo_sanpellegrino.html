@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <title>Mappa Meteo - San Pellegrino Terme</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+  <!-- Heatmap -->
+  <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
+
+  <style>
+    body { margin:0; font-family: Arial, sans-serif; }
+    .map-container { height: 50vh; width: 100%; position: relative; }
+    .map-container h3 { 
+      position: absolute; top: 10px; left: 50px; z-index: 1000;
+      background: rgba(255,255,255,0.9); padding: 8px 16px; 
+      margin: 0; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }
+    .controls {
+      display: flex; align-items: center; gap: 12px;
+      padding: 10px 16px; border-bottom: 1px solid #eee;
+    }
+    .controls label { font-weight: bold; }
+    .date-display { min-width: 160px; font-family: monospace; }
+    table { border-collapse: collapse; margin: 20px auto; width: 95%; max-width: 1200px; }
+    th, td { border: 1px solid #ccc; padding: 6px 8px; text-align: center; font-size: 13px; }
+    th { background: #f7f7f7; font-weight: 600; }
+    h2 { text-align: center; margin: 20px 0 8px; }
+    .loading { text-align: center; padding: 10px; color: #666; }
+    .legend {
+      margin: 0 16px 12px 16px; font-size: 13px; color: #444;
+    }
+    .model-info {
+      text-align: center; font-size: 12px; color: #666; 
+      margin: -10px 0 15px; font-style: italic;
+    }
+    .error { color: #d32f2f; text-align: center; padding: 20px; }
+  </style>
+</head>
+<body>
+  <!-- Mappa Previsioni -->
+  <div class="map-container">
+    <h3>Previsioni Precipitazioni (5 giorni)</h3>
+    <div id="mapForecast" style="height: 100%; width: 100%;"></div>
+  </div>
+
+  <div class="controls">
+    <label for="forecastSlider">Giorno previsione:</label>
+    <input id="forecastSlider" type="range" min="0" max="0" value="0" step="1" />
+    <span id="forecastLabel" class="date-display">--</span>
+    <span class="legend">Heatmap basata su precipitation_sum (mm/giorno)</span>
+  </div>
+
+  <!-- Mappa Storico -->
+  <div class="map-container">
+    <h3>Precipitazioni Cadute (ultimi 5 giorni)</h3>
+    <div id="mapHistory" style="height: 100%; width: 100%;"></div>
+  </div>
+
+  <div class="controls">
+    <label for="historySlider">Giorno storico:</label>
+    <input id="historySlider" type="range" min="0" max="0" value="0" step="1" />
+    <span id="historyLabel" class="date-display">--</span>
+    <span class="legend">Heatmap basata su precipitation_sum (mm/giorno)</span>
+  </div>
+
+  <!-- Tabella Previsioni -->
+  <h2>Previsioni meteorologiche (5 giorni)</h2>
+  <div class="model-info" id="forecastModel">Modello: Open-Meteo (ICON, GFS, ECMWF ensemble)</div>
+  <div id="forecastLoading" class="loading">Caricamento previsioni…</div>
+  <table id="forecastTable" style="display:none;">
+    <thead>
+      <tr>
+        <th>Data</th>
+        <th>Prob. pioggia (%)</th>
+        <th>Cumulata (mm)</th>
+        <th>Intensità max (mm/h)</th>
+        <th>T min (°C)</th>
+        <th>T max (°C)</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <!-- Tabella Storico -->
+  <h2>Dati osservati (ultimi 5 giorni)</h2>
+  <div class="model-info">Fonte: Open-Meteo Archive (dati ERA5-Land, CERRA)</div>
+  <div id="historyLoading" class="loading">Caricamento storico…</div>
+  <table id="historyTable" style="display:none;">
+    <thead>
+      <tr>
+        <th>Data</th>
+        <th>Cumulata (mm)</th>
+        <th>Intensità max (mm/h)</th>
+        <th>T min (°C)</th>
+        <th>T max (°C)</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <script>
+    // --- Località (nome: [lat, lon]) ---
+    const locations = {
+      "Sussia": [45.833, 9.633],
+      "Piazzacava": [45.850, 9.657],
+      "Foldone": [45.8491, 9.6161],
+      "Monte Molinasco": [45.854429482557435, 9.64178530454687],
+      "San Pellegrino Terme": [45.848687593657786, 9.666033864451745],
+      "Aplecchio": [45.842273445543654, 9.656271242169542],
+      "Vettarola": [45.846151165569296, 9.630560511873826],
+      "Catremerio": [45.822366845838566, 9.633348279863643]
+    };
+
+    // --- Mappe base ---
+    const mapForecast = L.map('mapForecast').setView([45.8487, 9.6660], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 18,
+      attribution: '© OpenStreetMap'
+    }).addTo(mapForecast);
+
+    const mapHistory = L.map('mapHistory').setView([45.8487, 9.6660], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 18,
+      attribution: '© OpenStreetMap'
+    }).addTo(mapHistory);
+
+    // Marker stazioni per previsioni
+    const forecastMarkers = {};
+    for (let name in locations) {
+      const [lat, lon] = locations[name];
+      forecastMarkers[name] = L.marker([lat, lon]).addTo(mapForecast)
+        .bindPopup(`${name}<br/>Cumulata prevista: -- mm`);
+    }
+
+    // Marker stazioni per storico
+    const historyMarkers = {};
+    for (let name in locations) {
+      const [lat, lon] = locations[name];
+      historyMarkers[name] = L.marker([lat, lon]).addTo(mapHistory)
+        .bindPopup(`${name}<br/>Cumulata: -- mm`);
+    }
+
+    // --- Utility date ---
+    function toISODate(d) { return d.toISOString().split('T')[0]; }
+    function fmt(val, digits=1) { 
+      if (val === null || val === undefined) return "--";
+      return Number(val).toFixed(digits); 
+    }
+
+    // --- Costruisci finestre temporali ---
+    const today = new Date();
+    const startHist = new Date(today); 
+    startHist.setDate(today.getDate() - 6);
+    const endHist = new Date(today); 
+    endHist.setDate(today.getDate() - 1);
+
+    // --- Fetch dati Open-Meteo per una località ---
+    async function fetchForLocation(lat, lon) {
+      // Forecast (prossimi 5 giorni)
+      const forecastUrl =
+        `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
+        `&daily=precipitation_sum,precipitation_probability_max,precipitation_hours` +
+        `&hourly=precipitation` +
+        `&daily=temperature_2m_min,temperature_2m_max` +
+        `&timezone=Europe/Rome&forecast_days=5`;
+
+      // Storico (ultimi 5 giorni) - Archive API
+      const historyUrl =
+        `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}` +
+        `&start_date=${toISODate(startHist)}&end_date=${toISODate(endHist)}` +
+        `&daily=precipitation_sum,temperature_2m_min,temperature_2m_max` +
+        `&hourly=precipitation` +
+        `&timezone=Europe/Rome`;
+
+      try {
+        const [fResp, hResp] = await Promise.all([
+          fetch(forecastUrl),
+          fetch(historyUrl)
+        ]);
+        
+        if (!fResp.ok || !hResp.ok) {
+          throw new Error(`HTTP error! Forecast: ${fResp.status}, History: ${hResp.status}`);
+        }
+
+        const forecast = await fResp.json();
+        const history = await hResp.json();
+        
+        return { forecast, history };
+      } catch (error) {
+        console.error(`Errore fetch per lat=${lat}, lon=${lon}:`, error);
+        throw error;
+      }
+    }
+
+    // Calcola max precipitazione oraria da array hourly
+    function calcMaxHourlyPrecip(hourlyData, dayIndex) {
+      if (!hourlyData || !hourlyData.precipitation || !hourlyData.time) return 0;
+      
+      const targetDate = hourlyData.time[dayIndex * 24]?.split('T')[0];
+      let maxPrecip = 0;
+      
+      hourlyData.time.forEach((timeStr, i) => {
+        const date = timeStr.split('T')[0];
+        if (date === targetDate) {
+          const precip = Number(hourlyData.precipitation[i] || 0);
+          if (precip > maxPrecip) maxPrecip = precip;
+        }
+      });
+      
+      return maxPrecip;
+    }
+
+    // --- Aggregazione su tutte le località ---
+    async function loadAll() {
+      const forecastAgg = {};
+      const historyAgg = {};
+      const forecastByDay = {};
+      const historyByDay = {};
+      const forecastPerStation = {};
+      const historyPerStation = {};
+
+      let successCount = 0;
+      let errorCount = 0;
+
+      for (let name in locations) {
+        const [lat, lon] = locations[name];
+        let data;
+        try { 
+          data = await fetchForLocation(lat, lon);
+          successCount++;
+        } catch (e) { 
+          console.warn("Errore fetch", name, e);
+          errorCount++;
+          continue; 
+        }
+
+        // Processa FORECAST
+        const f = data.forecast?.daily;
+        const fHourly = data.forecast?.hourly;
+        if (f && f.time) {
+          f.time.forEach((d, i) => {
+            if (!forecastAgg[d]) forecastAgg[d] = { prob:0, sum:0, max:0, tmin:0, tmax:0, count:0 };
+            forecastAgg[d].prob += Number(f.precipitation_probability_max?.[i] ?? 0);
+            forecastAgg[d].sum  += Number(f.precipitation_sum?.[i] ?? 0);
+            forecastAgg[d].tmin += Number(f.temperature_2m_min?.[i] ?? 0);
+            forecastAgg[d].tmax += Number(f.temperature_2m_max?.[i] ?? 0);
+            
+            const maxHourly = calcMaxHourlyPrecip(fHourly, i);
+            forecastAgg[d].max += maxHourly;
+            forecastAgg[d].count++;
+
+            if (!forecastByDay[d]) forecastByDay[d] = [];
+            forecastByDay[d].push([lat, lon, Number(f.precipitation_sum?.[i] ?? 0)]);
+
+            if (!forecastPerStation[d]) forecastPerStation[d] = {};
+            forecastPerStation[d][name] = { 
+              sum: Number(f.precipitation_sum?.[i] ?? 0),
+              max: maxHourly
+            };
+          });
+        }
+
+        // Processa HISTORY
+        const h = data.history?.daily;
+        const hHourly = data.history?.hourly;
+        if (h && h.time) {
+          h.time.forEach((d, i) => {
+            const sum = Number(h.precipitation_sum?.[i] ?? 0);
+            const tmin = Number(h.temperature_2m_min?.[i] ?? 0);
+            const tmax = Number(h.temperature_2m_max?.[i] ?? 0);
+            const maxHourly = calcMaxHourlyPrecip(hHourly, i);
+
+            if (!historyAgg[d]) historyAgg[d] = { sum:0, max:0, tmin:0, tmax:0, count:0 };
+            historyAgg[d].sum += sum;
+            historyAgg[d].max += maxHourly;
+            historyAgg[d].tmin += tmin;
+            historyAgg[d].tmax += tmax;
+            historyAgg[d].count++;
+
+            if (!historyByDay[d]) historyByDay[d] = [];
+            historyByDay[d].push([lat, lon, sum]);
+
+            if (!historyPerStation[d]) historyPerStation[d] = {};
+            historyPerStation[d][name] = { sum, max: maxHourly };
+          });
+        }
+      }
+
+      console.log(`Caricamento completato: ${successCount} località OK, ${errorCount} errori`);
+
+      if (successCount === 0) {
+        throw new Error("Impossibile caricare dati da nessuna località");
+      }
+
+      // --- Popola tabella FORECAST ---
+      const fTbody = document.querySelector("#forecastTable tbody");
+      const fLoading = document.getElementById("forecastLoading");
+      const fTable = document.getElementById("forecastTable");
+      const forecastDates = Object.keys(forecastAgg).sort();
+
+      forecastDates.forEach(d => {
+        const row = forecastAgg[d];
+        const probAvg = row.count ? (row.prob / row.count) : 0;
+        const sumAvg  = row.count ? (row.sum / row.count) : 0;
+        const maxAvg  = row.count ? (row.max / row.count) : 0;
+        const tminAvg = row.count ? (row.tmin / row.count) : null;
+        const tmaxAvg = row.count ? (row.tmax / row.count) : null;
+        fTbody.insertAdjacentHTML("beforeend",
+          `<tr>
+            <td>${d}</td>
+            <td>${fmt(probAvg,0)}</td>
+            <td>${fmt(sumAvg,1)}</td>
+            <td>${fmt(maxAvg,1)}</td>
+            <td>${fmt(tminAvg,1)}</td>
+            <td>${fmt(tmaxAvg,1)}</td>
+          </tr>`);
+      });
+      fLoading.style.display = "none";
+      fTable.style.display = "";
+
+      // --- Popola tabella HISTORY ---
+      const hTbody = document.querySelector("#historyTable tbody");
+      const hLoading = document.getElementById("historyLoading");
+      const hTable = document.getElementById("historyTable");
+      const historyDates = Object.keys(historyAgg).sort();
+
+      historyDates.forEach(d => {
+        const row = historyAgg[d];
+        const sumAvg = row.count ? (row.sum / row.count) : 0;
+        const maxAvg = row.count ? (row.max / row.count) : 0;
+        const tminAvg = row.count ? (row.tmin / row.count) : null;
+        const tmaxAvg = row.count ? (row.tmax / row.count) : null;
+        hTbody.insertAdjacentHTML("beforeend",
+          `<tr>
+            <td>${d}</td>
+            <td>${fmt(sumAvg,1)}</td>
+            <td>${fmt(maxAvg,1)}</td>
+            <td>${fmt(tminAvg,1)}</td>
+            <td>${fmt(tmaxAvg,1)}</td>
+          </tr>`);
+      });
+      hLoading.style.display = "none";
+      hTable.style.display = "";
+
+      // --- Setup FORECAST heatmap/slider ---
+      const forecastSlider = document.getElementById("forecastSlider");
+      const forecastLabel = document.getElementById("forecastLabel");
+      forecastSlider.min = 0;
+      forecastSlider.max = Math.max(0, forecastDates.length - 1);
+      forecastSlider.value = 0;
+
+      let forecastHeatLayer = null;
+      function updateForecastHeatmap(idx) {
+        const date = forecastDates[idx];
+        forecastLabel.textContent = date ?? "--";
+        const points = forecastByDay[date] ?? [];
+
+        if (forecastHeatLayer) { mapForecast.removeLayer(forecastHeatLayer); }
+        forecastHeatLayer = L.heatLayer(points, { radius: 45, blur: 28, maxZoom: 13 });
+        forecastHeatLayer.addTo(mapForecast);
+
+        const perStation = forecastPerStation[date] ?? {};
+        for (let name in forecastMarkers) {
+          const val = perStation[name]?.sum ?? null;
+          const txt = fmt(val, 1);
+          forecastMarkers[name].setPopupContent(`${name}<br/>Cumulata prevista: ${txt} mm`);
+        }
+      }
+
+      forecastSlider.addEventListener("input", () => 
+        updateForecastHeatmap(Number(forecastSlider.value)));
+      updateForecastHeatmap(0);
+
+      // --- Setup HISTORY heatmap/slider ---
+      const historySlider = document.getElementById("historySlider");
+      const historyLabel = document.getElementById("historyLabel");
+      historySlider.min = 0;
+      historySlider.max = Math.max(0, historyDates.length - 1);
+      historySlider.value = historySlider.max;
+
+      let historyHeatLayer = null;
+      function updateHistoryHeatmap(idx) {
+        const date = historyDates[idx];
+        historyLabel.textContent = date ?? "--";
+        const points = historyByDay[date] ?? [];
+
+        if (historyHeatLayer) { mapHistory.removeLayer(historyHeatLayer); }
+        historyHeatLayer = L.heatLayer(points, { radius: 45, blur: 28, maxZoom: 13 });
+        historyHeatLayer.addTo(mapHistory);
+
+        const perStation = historyPerStation[date] ?? {};
+        for (let name in historyMarkers) {
+          const val = perStation[name]?.sum ?? null;
+          const txt = fmt(val, 1);
+          historyMarkers[name].setPopupContent(`${name}<br/>Cumulata: ${txt} mm`);
+        }
+      }
+
+      historySlider.addEventListener("input", () => 
+        updateHistoryHeatmap(Number(historySlider.value)));
+      updateHistoryHeatmap(Number(historySlider.value));
+    }
+
+    // Avvio
+    loadAll().catch(e => {
+      console.error("Errore generale caricamento dati:", e);
+      document.getElementById("forecastLoading").innerHTML = 
+        '<div class="error">Errore nel caricamento previsioni. Controlla la console per dettagli.</div>';
+      document.getElementById("historyLoading").innerHTML = 
+        '<div class="error">Errore nel caricamento storico. Controlla la console per dettagli.</div>';
+    });
+  </script>
+</body>
+</html>
