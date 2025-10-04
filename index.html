@@ -26,9 +26,7 @@
     th { background: #f7f7f7; }
     h2 { text-align: center; margin: 20px 0 8px; }
     .loading { text-align: center; padding: 10px; color: #666; }
-    .legend {
-      margin: 0 16px 12px 16px; font-size: 13px; color: #444;
-    }
+    .legend { margin: 0 16px 12px 16px; font-size: 13px; color: #444; }
   </style>
 </head>
 <body>
@@ -72,7 +70,7 @@
       "Catremerio": [45.822366845838566, 9.633348279863643]
     };
 
-    // --- Mappa base ---
+    // --- Mappa ---
     const map = L.map('map').setView([45.8487, 9.6660], 13);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 18,
@@ -90,63 +88,91 @@
     function toISODate(d) { return d.toISOString().split('T')[0]; }
     function fmt(val, digits=1) { return (val ?? 0).toFixed(digits); }
 
-    // --- Costruisci finestre temporali ---
+    // --- Finestre temporali ---
     const today = new Date();
     const startHist = new Date(today); startHist.setDate(today.getDate() - 5);
     const endHist = new Date(today); endHist.setDate(today.getDate() - 1);
 
-    // --- Fetch dati Open-Meteo per una località ---
+    // --- Fetch Open-Meteo per una località ---
     async function fetchForLocation(lat, lon) {
-      // Forecast (prossimi 5 giorni)
       const forecastUrl =
         `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
-        `&daily=precipitation_sum,precipitation_probability_max,precipitation_max` +
-        `&hourly=precipitation,precipitation_probability` +
+        `&daily=precipitation_sum,precipitation_probability_max,precipitation_hours` +
+        `&hourly=precipitation` +
         `&timezone=Europe/Rome&forecast_days=5`;
 
-      // Storico (ultimi 5 giorni, da startHist a endHist)
       const historyUrl =
         `https://historical-forecast-api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
         `&start_date=${toISODate(startHist)}&end_date=${toISODate(endHist)}` +
-        `&daily=precipitation_sum,precipitation_max` +
-        `&hourly=precipitation,precipitation_probability` +
+        `&daily=precipitation_sum,precipitation_hours` +
+        `&hourly=precipitation` +
         `&timezone=Europe/Rome`;
 
       const [fResp, hResp] = await Promise.all([fetch(forecastUrl), fetch(historyUrl)]);
+      if (!fResp.ok) throw new Error(`Forecast 400: ${await fResp.text()}`);
+      if (!hResp.ok) throw new Error(`History 400: ${await hResp.text()}`);
       const forecast = await fResp.json();
       const history = await hResp.json();
       return { forecast, history };
     }
 
-    // --- Aggregazione su tutte le località ---
+    // --- Aggregazione oraria -> giornaliera (max intensità mm/h) ---
+    function dailyMaxFromHourly(hourly) {
+      // hourly.precipitation: array in mm, hourly.time: array di ISO string
+      if (!hourly || !hourly.time || !hourly.precipitation) return {};
+      const maxByDate = {};
+      for (let i = 0; i < hourly.time.length; i++) {
+        const date = hourly.time[i].split('T')[0];
+        const val = Number(hourly.precipitation[i] ?? 0);
+        maxByDate[date] = Math.max(maxByDate[date] ?? 0, val);
+      }
+      return maxByDate;
+    }
+
+    // --- Carica e aggrega tutte le località ---
     async function loadAll() {
-      const forecastAgg = {};     // date: {prob,sum,max,count}
-      const historyAgg = {};      // date: {sum,max,count}
-      const historyByDay = {};    // date: [{lat,lon,value}] per heatmap
-      const historyPerStation = {}; // date: { stationName: {sum,max} }
+      const forecastAgg = {};         // date: {prob,sum,max,count}
+      const historyAgg = {};          // date: {sum,max,count}
+      const historyByDay = {};        // date: [[lat,lon,value], ...]
+      const historyPerStation = {};   // date: { stationName: {sum,max} }
 
       for (let name in locations) {
         const [lat, lon] = locations[name];
+
         let data;
         try { data = await fetchForLocation(lat, lon); }
         catch (e) { console.warn("Errore fetch", name, e); continue; }
 
-        const f = data.forecast?.daily;
-        if (f && f.time) {
-          f.time.forEach((d, i) => {
+        // Forecast aggregazione
+        const f = data.forecast;
+        const fDaily = f?.daily;
+        const fHourly = f?.hourly;
+        const fMaxByDate = dailyMaxFromHourly(fHourly);
+
+        if (fDaily && fDaily.time) {
+          fDaily.time.forEach((d, i) => {
+            const prob = Number(fDaily.precipitation_probability_max?.[i] ?? 0);
+            const sum  = Number(fDaily.precipitation_sum?.[i] ?? 0);
+            const max  = Number(fMaxByDate[d] ?? 0);
+
             if (!forecastAgg[d]) forecastAgg[d] = { prob:0, sum:0, max:0, count:0 };
-            forecastAgg[d].prob += Number(f.precipitation_probability_max?.[i] ?? 0);
-            forecastAgg[d].sum  += Number(f.precipitation_sum?.[i] ?? 0);
-            forecastAgg[d].max  += Number(f.precipitation_max?.[i] ?? 0);
+            forecastAgg[d].prob += prob;
+            forecastAgg[d].sum  += sum;
+            forecastAgg[d].max  += max;
             forecastAgg[d].count++;
           });
         }
 
-        const h = data.history?.daily;
-        if (h && h.time) {
-          h.time.forEach((d, i) => {
-            const sum = Number(h.precipitation_sum?.[i] ?? 0);
-            const max = Number(h.precipitation_max?.[i] ?? 0);
+        // Storico aggregazione
+        const h = data.history;
+        const hDaily = h?.daily;
+        const hHourly = h?.hourly;
+        const hMaxByDate = dailyMaxFromHourly(hHourly);
+
+        if (hDaily && hDaily.time) {
+          hDaily.time.forEach((d, i) => {
+            const sum = Number(hDaily.precipitation_sum?.[i] ?? 0);
+            const max = Number(hMaxByDate[d] ?? 0);
 
             if (!historyAgg[d]) historyAgg[d] = { sum:0, max:0, count:0 };
             historyAgg[d].sum += sum;
@@ -162,7 +188,7 @@
         }
       }
 
-      // --- Popola tabella forecast (media sulle località) ---
+      // --- Tabella Forecast (medie su località) ---
       const fTbody = document.querySelector("#forecastTable tbody");
       const fLoading = document.getElementById("forecastLoading");
       const fTable = document.getElementById("forecastTable");
@@ -179,7 +205,7 @@
       fLoading.style.display = "none";
       fTable.style.display = "";
 
-      // --- Popola tabella storico (media sulle località) ---
+      // --- Tabella Storico (medie su località) ---
       const hTbody = document.querySelector("#historyTable tbody");
       const hLoading = document.getElementById("historyLoading");
       const hTable = document.getElementById("historyTable");
@@ -198,20 +224,17 @@
       // --- Slider temporale per heatmap ---
       const daySlider = document.getElementById("daySlider");
       const dayLabel = document.getElementById("dayLabel");
-      const times = historyDates;
       daySlider.min = 0;
-      daySlider.max = Math.max(0, times.length - 1);
+      daySlider.max = Math.max(0, historyDates.length - 1);
       daySlider.value = daySlider.max;
 
-      // --- Heatmap layer gestito ---
       let heatLayer = null;
       function updateHeatmap(idx) {
-        const date = times[idx];
+        const date = historyDates[idx];
         dayLabel.textContent = date ?? "--";
         const points = historyByDay[date] ?? [];
 
-        if (heatLayer) { map.removeLayer(heatLayer); }
-        // Radius/blur tarati per area montana
+        if (heatLayer) map.removeLayer(heatLayer);
         heatLayer = L.heatLayer(points, { radius: 45, blur: 28, maxZoom: 13 });
         heatLayer.addTo(map);
 
@@ -224,11 +247,18 @@
         }
       }
 
-      // Eventi slider
       daySlider.addEventListener("input", () => updateHeatmap(Number(daySlider.value)));
 
-      // Inizializza heatmap sul giorno più recente
+      // Inizializza sul giorno più recente
       updateHeatmap(Number(daySlider.value));
+
+      // --- (Opzionale) Animazione automatica ---
+      // let idx = Number(daySlider.value);
+      // setInterval(() => {
+      //   idx = (idx + 1) % historyDates.length;
+      //   daySlider.value = idx;
+      //   updateHeatmap(idx);
+      // }, 2000);
     }
 
     // Avvio
@@ -240,4 +270,5 @@
   </script>
 </body>
 </html>
+
 
