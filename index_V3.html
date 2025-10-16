@@ -27,17 +27,9 @@
     }
     .controls label { font-weight: bold; }
     .date-display { min-width: 160px; font-family: monospace; }
-    .legend {
-      display: flex; align-items: center; gap: 8px;
-      font-size: 13px; color: #444;
-    }
-    .legend-bar {
-      width: 160px; height: 10px; background: linear-gradient(to right, #0b0f49, #2155b5, #3cc1ff, #7fff7f, #ffd93d, #ff7f27, #c40000);
-      border: 1px solid #999;
-    }
-    .legend-labels {
-      display: flex; justify-content: space-between; width: 160px; font-size: 11px; color: #333;
-    }
+    .legend { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #444; }
+    .legend-bar { width: 160px; height: 10px; background: linear-gradient(to right, #0b0f49, #2155b5, #3cc1ff, #7fff7f, #ffd93d, #ff7f27, #c40000); border: 1px solid #999; }
+    .legend-labels { display: flex; justify-content: space-between; width: 160px; font-size: 11px; color: #333; }
     .section { padding-bottom: 18px; }
     table { border-collapse: collapse; margin: 12px auto; width: 95%; max-width: 1200px; }
     th, td { border: 1px solid #ccc; padding: 6px 8px; text-align: center; }
@@ -48,15 +40,12 @@
     .label-icon { background: rgba(0,0,0,0.7); color: #fff; padding: 2px 4px; border-radius: 3px; font-size: 11px; }
     .run-badge { font-size: 12px; color: #555; text-align: center; margin: 6px 0; }
     #infoBox { margin: 20px auto; max-width: 1000px; padding: 12px; border: 1px solid #ccc; background: #fafafa; font-size: 14px; line-height: 1.4; }
-
-    /* Correlation section */
     #corrSection { max-width: 1200px; margin: 0 auto; padding: 6px 16px 22px; }
     .corr-grid { display: grid; grid-template-columns: repeat(2, minmax(300px, 1fr)); gap: 18px; }
     .card { border: 1px solid #ddd; padding: 12px; background: #fff; }
     .ref-select { margin: 6px 0 12px; }
-
-    /* Interpolation pane opacity */
     .interp-pane { opacity: 0.7; }
+    .hull { color: #c40000; }
   </style>
 </head>
 <body>
@@ -73,7 +62,7 @@
         <div class="legend-bar"></div>
         <div>
           <div>Intensità heatmap: precipitation_sum (mm/giorno)</div>
-          <div class="legend-labels"><span>0</span><span>10</span><span>25</span><span>50+</span></div>
+          <div class="legend-labels"><span id="leg0Fc">0</span><span id="leg10Fc">10</span><span id="leg25Fc">25</span><span id="leg50Fc">50+</span></div>
         </div>
       </div>
       <label for="interpMethod" style="margin-left:12px;">Metodo:</label>
@@ -93,6 +82,14 @@
         <option value="2">2</option>
         <option value="5" selected>5</option>
         <option value="10">10</option>
+      </select>
+      <label for="opacityFc">Opacità:</label>
+      <input id="opacityFc" type="range" min="0.3" max="0.9" step="0.1" value="0.7" />
+      <label for="scaleFc">Scala max (mm):</label>
+      <select id="scaleFc">
+        <option value="50">50</option>
+        <option value="60" selected>60</option>
+        <option value="80">80</option>
       </select>
     </div>
     <div id="forecastRun" class="run-badge">Ultimo run: -- | Modelli: --</div>
@@ -119,7 +116,7 @@
         <div class="legend-bar"></div>
         <div>
           <div>Intensità heatmap: precipitation_sum (mm/giorno)</div>
-          <div class="legend-labels"><span>0</span><span>10</span><span>25</span><span>50+</span></div>
+          <div class="legend-labels"><span id="leg0Hist">0</span><span id="leg10Hist">10</span><span id="leg25Hist">25</span><span id="leg50Hist">50+</span></div>
         </div>
       </div>
       <label for="interpMethodHist" style="margin-left:12px;">Metodo:</label>
@@ -139,6 +136,14 @@
         <option value="2">2</option>
         <option value="5" selected>5</option>
         <option value="10">10</option>
+      </select>
+      <label for="opacityHist">Opacità:</label>
+      <input id="opacityHist" type="range" min="0.3" max="0.9" step="0.1" value="0.7" />
+      <label for="scaleHist">Scala max (mm):</label>
+      <select id="scaleHist">
+        <option value="50">50</option>
+        <option value="60" selected>60</option>
+        <option value="80">80</option>
       </select>
     </div>
     <div id="historicRun" class="run-badge">Ultimo aggiornamento reanalisi: --</div>
@@ -166,7 +171,7 @@
         <div class="legend-bar"></div>
         <div>
           <div>Intensità heatmap: precipitation_sum (mm/giorno)</div>
-          <div class="legend-labels"><span>0</span><span>10</span><span>25</span><span>50+</span></div>
+          <div class="legend-labels"><span id="leg0Ann">0</span><span id="leg10Ann">10</span><span id="leg25Ann">25</span><span id="leg50Ann">50+</span></div>
         </div>
       </div>
       <label for="interpMethodAnnual" style="margin-left:12px;">Metodo:</label>
@@ -187,14 +192,22 @@
         <option value="5" selected>5</option>
         <option value="10">10</option>
       </select>
+      <label for="opacityAnn">Opacità:</label>
+      <input id="opacityAnn" type="range" min="0.3" max="0.9" step="0.1" value="0.7" />
+      <label for="scaleAnn">Scala max (mm):</label>
+      <select id="scaleAnn">
+        <option value="50">50</option>
+        <option value="60" selected>60</option>
+        <option value="80">80</option>
+      </select>
     </div>
     <div id="annualRun" class="run-badge">Ultimo aggiornamento reanalisi: --</div>
   </div>
 
   <!-- Annual tables -->
   <div class="section">
-    <h2>Tabelle annuali per stazione (tutti gli anni disponibili)</h2>
-    <div class="note">Cumulata totale annua, massimi su finestre 1h–72h, giorni piovosi. Calcolo su anni dal 1979 all’anno corrente (attenzione ai tempi di caricamento).</div>
+    <h2>Tabelle annuali per stazione (ultimi 5 anni)</h2>
+    <div class="note">Cumulata totale annua, massimi su finestre 1h–72h, giorni piovosi. Calcolo dal 2019 all’anno corrente (si saltano anni non disponibili).</div>
     <div id="annualLoading" class="loading">Caricamento dati annuali…</div>
     <div id="annualTables"></div>
     <div id="annualTablesRun" class="run-badge">Ultimo aggiornamento reanalisi: --</div>
@@ -203,7 +216,7 @@
   <!-- Correlations -->
   <div class="section" id="corrSection">
     <h2>Correlazioni tra stazioni</h2>
-    <div class="note">Calcolate su serie giornaliere. Puoi scegliere: ultimi 10 giorni, anno in corso, oppure tutti gli anni disponibili (1979–oggi). Cross‑correlation con lag ±3 giorni.</div>
+    <div class="note">Calcolate su serie giornaliere. Puoi scegliere: ultimi 10 giorni, anno in corso, oppure ultimi 5 anni (dati disponibili). Cross‑correlation con lag ±3 giorni.</div>
     <div class="ref-select">
       <label for="refStation"><b>Stazione di riferimento:</b></label>
       <select id="refStation"></select>
@@ -211,7 +224,7 @@
       <select id="corrScope">
         <option value="10d">Ultimi 10 giorni</option>
         <option value="year">Anno in corso</option>
-        <option value="all">Tutti gli anni</option>
+        <option value="last5">Ultimi 5 anni</option>
       </select>
     </div>
     <div class="corr-grid">
@@ -236,8 +249,8 @@
 
   <div id="infoBox">
     <h3>ℹ️ Informazioni sui dati Open‑Meteo</h3>
-    <p><b>Modelli previsionali:</b> Open‑Meteo può combinare modelli come ECMWF, ICON e GFS; quando disponibile, l’header “x-open-meteo-models” elenca i modelli usati nella risposta.</p>
-    <p><b>Dati storici:</b> reanalisi ECMWF IFS, risoluzione tipica 0.25° (~25 km), dal 1979 ad oggi.</p>
+    <p><b>Modelli previsionali:</b> Open‑Meteo può combinare modelli come ECMWF, ICON e GFS; quando presente, l’header “x-open-meteo-models” indica i modelli usati.</p>
+    <p><b>Dati storici:</b> reanalisi ECMWF IFS, risoluzione tipica 0.25° (~25 km), copertura pluridecennale.</p>
     <p><b>Affidabilità:</b> previsioni solide fino a 3–5 giorni; reanalisi ottime per cumulate e trend, meno per picchi locali in aree alpine.</p>
   </div>
 
@@ -265,28 +278,24 @@
     const endHist   = new Date(today); endHist.setDate(today.getDate() - 1);
     const startYear = new Date(new Date().getFullYear(), 0, 1);
     const endYear   = new Date(today);
-
-    const firstYear = 1979;
     const currentYear = new Date().getFullYear();
+    const firstOfLast5 = Math.max(2019, currentYear - 4);
 
-    // --- Mappe e pane trasparente ---
+    // --- Mappe & pane trasparente ---
     const center = [45.8487, 9.6660];
     const osmOpts = { maxZoom: 18, attribution: '© OpenStreetMap' };
     const osmUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
 
     const mapForecast = L.map('mapForecast').setView(center, 13);
-    mapForecast.createPane('interpPane'); // pane per trasparenza
-    mapForecast.getPane('interpPane').classList.add('interp-pane');
+    mapForecast.createPane('interpPane'); mapForecast.getPane('interpPane').classList.add('interp-pane');
     L.tileLayer(osmUrl, osmOpts).addTo(mapForecast);
 
     const mapHistoric = L.map('mapHistoric').setView(center, 13);
-    mapHistoric.createPane('interpPane');
-    mapHistoric.getPane('interpPane').classList.add('interp-pane');
+    mapHistoric.createPane('interpPane'); mapHistoric.getPane('interpPane').classList.add('interp-pane');
     L.tileLayer(osmUrl, osmOpts).addTo(mapHistoric);
 
     const mapAnnual = L.map('mapAnnual').setView(center, 13);
-    mapAnnual.createPane('interpPane');
-    mapAnnual.getPane('interpPane').classList.add('interp-pane');
+    mapAnnual.createPane('interpPane'); mapAnnual.getPane('interpPane').classList.add('interp-pane');
     L.tileLayer(osmUrl, osmOpts).addTo(mapAnnual);
 
     const mapCorr = L.map('mapCorr').setView(center, 13);
@@ -323,7 +332,27 @@
     }
     const bounds = mapBoundsAroundStations(0.08);
 
-    // --- Run/Update badges + modelli (se disponibili) ---
+    // Convex hull (Graham scan semplificato su lat/lon)
+    function convexHullLatLon(points) {
+      const pts = points.map(p => ({x: p.lon, y: p.lat}));
+      pts.sort((a,b) => a.x===b.x ? a.y-b.y : a.x-b.x);
+      const cross = (o,a,b) => (a.x-o.x)*(b.y-o.y) - (a.y-o.y)*(b.x-o.x);
+      const lower = [];
+      for (const p of pts) {
+        while (lower.length>=2 && cross(lower[lower.length-2], lower[lower.length-1], p) <= 0) lower.pop();
+        lower.push(p);
+      }
+      const upper = [];
+      for (let i=pts.length-1;i>=0;i--) {
+        const p = pts[i];
+        while (upper.length>=2 && cross(upper[upper.length-2], upper[upper.length-1], p) <= 0) upper.pop();
+        upper.push(p);
+      }
+      upper.pop(); lower.pop();
+      return lower.concat(upper).map(p => [p.y, p.x]); // [lat,lon]
+    }
+
+    // Run/Update badges + modelli (se disponibili)
     function formatHttpDate(dateStr) {
       if (!dateStr) return '--';
       const d = new Date(dateStr);
@@ -339,7 +368,7 @@
       return { data: json, runDate: run, models };
     }
 
-    // --- Open-Meteo fetch ---
+    // Open-Meteo fetch
     async function fetchHistoric(lat, lon, start, end) {
       const url =
         `https://historical-forecast-api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
@@ -358,7 +387,7 @@
       return fetchWithRun(url);
     }
 
-    // --- Daily max intensity from hourly ---
+    // Daily max from hourly
     function dailyMaxFromHourly(hourly) {
       const out = {};
       if (!hourly || !hourly.time || !hourly.precipitation) return out;
@@ -370,12 +399,15 @@
       return out;
     }
 
-    // --- Interpolazioni ---
+    // Interpolazioni
     const GRID_STEP = 0.0009; // ~100 m
 
+    function normalize(val, maxVal) {
+      return Math.max(0, Math.min(1, val / maxVal));
+    }
+
     function heatPoints(points, maxVal=60) {
-      // Leaflet.heat si aspetta [lat, lon, intensity 0..1]
-      return points.map(p => [p.lat, p.lon, Math.max(0, Math.min(1, p.val / maxVal))]);
+      return points.map(p => [p.lat, p.lon, normalize(p.val, maxVal)]);
     }
 
     function voronoiNNGrid(points, bounds, gridStep=GRID_STEP, maxVal=60) {
@@ -389,8 +421,7 @@
             const d = (p.lat-lat)*(p.lat-lat) + (p.lon-lon)*(p.lon-lon);
             if (d < bestD) { bestD = d; bestVal = p.val; }
           }
-          const norm = Math.max(0, Math.min(1, bestVal / maxVal));
-          heatPts.push([lat, lon, norm]);
+          heatPts.push([lat, lon, normalize(bestVal, maxVal)]);
         }
       }
       return heatPts;
@@ -400,7 +431,7 @@
       const heatPts = [];
       const minLat = bounds.getSouth(), maxLat = bounds.getNorth();
       const minLon = bounds.getWest(),  maxLon = bounds.getEast();
-      const degPerKmLat = 1/111.32; // approx
+      const degPerKmLat = 1/111.32;
       const degPerKmLon = d => 1/(111.32 * Math.cos(d * Math.PI/180));
       for (let lat = minLat; lat <= maxLat; lat += gridStep) {
         const degLon = degPerKmLon(lat);
@@ -416,23 +447,42 @@
             }
           }
           const v = den ? (num/den) : 0;
-          const norm = Math.max(0, Math.min(1, v / maxVal));
-          heatPts.push([lat, lon, norm]);
+          heatPts.push([lat, lon, normalize(v, maxVal)]);
         }
       }
       return heatPts;
     }
 
-    // --- Datasets per correlazioni ---
-    const series10PerStation = {};   // {name: {date: sum}}
-    const seriesYearPerStation = {}; // {name: {date: sum}}
-    const seriesAllPerStation = {};  // {name: {date: sum}} concatenato 1979–oggi
+    // Se tutte le stazioni hanno lo stesso valore (o varianza ~0), non riempiamo: disegniamo solo il perimetro
+    function isUniform(points, eps=1e-6) {
+      if (!points || points.length === 0) return true;
+      const v0 = points[0].val;
+      for (const p of points) {
+        if (Math.abs(p.val - v0) > eps) return false;
+      }
+      return true;
+    }
 
-    // --- Run dates ---
+    function drawHull(map, points, existingHullLayer) {
+      if (existingHullLayer) map.removeLayer(existingHullLayer);
+      const hull = convexHullLatLon(points);
+      if (hull.length >= 3) {
+        return L.polygon(hull, { color: '#c40000', weight: 2, fillOpacity: 0, pane: 'interpPane' }).addTo(map);
+      } else {
+        return null;
+      }
+    }
+
+    // Dataset correlazioni
+    const series10PerStation = {};
+    const seriesYearPerStation = {};
+    const seriesLast5PerStation = {}; // concat degli ultimi 5 anni disponibili
+
+    // Run dates
     const fcRunDates = [], histRunDates = [], annualRunDates = [];
     let forecastModelsHeader = null;
 
-    // --- Caricamento base: forecast + storico 10 gg ---
+    // Forecast + storico 10 gg
     async function loadBase() {
       const histAgg = {}, histMax = {}, histByDay = {}, histPerStation = {};
       const fcAgg = {}, fcMax = {}, fcByDay = {}, fcPerStation = {};
@@ -445,7 +495,7 @@
         if (histRun) histRunDates.push(histRun);
         if (fcModels) forecastModelsHeader = fcModels;
 
-        // Storico (10 gg)
+        // Storico 10 gg
         const hDaily = hist?.daily, hHourly = hist?.hourly;
         const hMaxByDate = dailyMaxFromHourly(hHourly);
         if (hDaily?.time) {
@@ -486,6 +536,7 @@
       // Tabelle forecast
       const fcDates = Object.keys(fcAgg).sort();
       const fTbody = document.querySelector("#forecastTable tbody");
+      fTbody.innerHTML = '';
       fcDates.forEach(d => {
         const avgProb = fcAgg[d].prob / fcAgg[d].count;
         const avgSum  = fcAgg[d].sum  / fcAgg[d].count;
@@ -498,24 +549,35 @@
       document.getElementById("forecastRun").textContent =
         `Ultimo run: ${formatHttpDate(fcRunDates.sort().slice(-1)[0])} | Modelli: ${forecastModelsHeader || 'non dichiarati'}`;
 
-      // Heatmap forecast con selettore
+      // Heatmap forecast con selettore + opacità + scala dinamica + uniformità
       const fcSlider = document.getElementById("fcSlider");
       const fcLabel = document.getElementById("fcLabel");
       const methodSel = document.getElementById("interpMethod");
       const powerSel  = document.getElementById("idwPower");
       const radiusSel = document.getElementById("idwRadius");
+      const opacityFc = document.getElementById("opacityFc");
+      const scaleFc   = document.getElementById("scaleFc");
       fcSlider.min = 0; fcSlider.max = Math.max(0, fcDates.length-1); fcSlider.value = fcSlider.max;
-      let interpLayerFc = null;
+      let interpLayerFc = null, hullFc = null;
 
-      function renderInterpolation(map, layerVar, points, method, power, radiusKm) {
+      function setLegend(scale, ids) {
+        const s = Number(scale);
+        document.getElementById(ids[0]).textContent = '0';
+        document.getElementById(ids[1]).textContent = `${Math.round(s*0.166)}`; // ~10 su 60
+        document.getElementById(ids[2]).textContent = `${Math.round(s*0.416)}`; // ~25 su 60
+        document.getElementById(ids[3]).textContent = `${Math.round(s*0.833)}+`; // ~50 su 60
+      }
+
+      function renderInterpolation(map, layerVar, points, method, power, radiusKm, maxScale, opacity) {
         if (layerVar) map.removeLayer(layerVar);
+        map.getPane('interpPane').style.opacity = opacity;
         let heatData;
         if (method === 'heat') {
-          heatData = heatPoints(points, 60);
+          heatData = heatPoints(points, maxScale);
         } else if (method === 'voronoi') {
-          heatData = voronoiNNGrid(points, bounds, GRID_STEP, 60);
+          heatData = voronoiNNGrid(points, bounds, GRID_STEP, maxScale);
         } else {
-          heatData = idwCutoffGrid(points, bounds, GRID_STEP, power, radiusKm, 60);
+          heatData = idwCutoffGrid(points, bounds, GRID_STEP, power, radiusKm, maxScale);
         }
         return L.heatLayer(heatData, {
           pane: 'interpPane',
@@ -528,10 +590,20 @@
         const date = fcDates[idx];
         fcLabel.textContent = date ?? "--";
         const points = (fcByDay[date] || []);
-        const method = methodSel.value;
-        const power  = Number(powerSel.value);
-        const radius = Number(radiusSel.value);
-        interpLayerFc = renderInterpolation(mapForecast, interpLayerFc, points, method, power, radius);
+        const maxScale = Number(scaleFc.value);
+        setLegend(maxScale, ['leg0Fc','leg10Fc','leg25Fc','leg50Fc']);
+
+        // Uniform filter
+        const uniform = isUniform(points);
+        if (uniform) {
+          if (interpLayerFc) mapForecast.removeLayer(interpLayerFc);
+          hullFc = drawHull(mapForecast, points, hullFc);
+        } else {
+          if (hullFc) { mapForecast.removeLayer(hullFc); hullFc = null; }
+          interpLayerFc = renderInterpolation(
+            mapForecast, interpLayerFc, points, methodSel.value, Number(powerSel.value), Number(radiusSel.value), maxScale, Number(opacityFc.value)
+          );
+        }
 
         // Label e popup
         const perStation = fcPerStation[date] || {};
@@ -546,14 +618,13 @@
         drawRainElevation(points);
       }
       fcSlider.addEventListener("input", () => updateFc(Number(fcSlider.value)));
-      methodSel.addEventListener("change", () => updateFc(Number(fcSlider.value)));
-      powerSel.addEventListener("change", () => updateFc(Number(fcSlider.value)));
-      radiusSel.addEventListener("change", () => updateFc(Number(fcSlider.value)));
+      [methodSel, powerSel, radiusSel, opacityFc, scaleFc].forEach(el => el.addEventListener("change", () => updateFc(Number(fcSlider.value))));
       updateFc(Number(fcSlider.value));
 
       // Tabelle storico 10 giorni
       const histDates = Object.keys(histAgg).sort();
       const hTbody = document.querySelector("#historyTable tbody");
+      hTbody.innerHTML = '';
       let total10 = 0;
       histDates.forEach(d => {
         const avgSum = histAgg[d].sum / histAgg[d].count;
@@ -569,41 +640,50 @@
       document.getElementById("historicRun").textContent =
         `Ultimo aggiornamento reanalisi: ${formatHttpDate(histRunDates.sort().slice(-1)[0])}`;
 
-      // Heatmap storico con selettore
+      // Heatmap storico
       const histSlider = document.getElementById("histSlider");
       const histLabel = document.getElementById("histLabel");
       const methodSelHist = document.getElementById("interpMethodHist");
       const powerSelHist  = document.getElementById("idwPowerHist");
       const radiusSelHist = document.getElementById("idwRadiusHist");
+      const opacityHist   = document.getElementById("opacityHist");
+      const scaleHist     = document.getElementById("scaleHist");
       histSlider.min = 0; histSlider.max = Math.max(0, histDates.length-1); histSlider.value = histSlider.max;
-      let interpLayerHist = null;
+      let interpLayerHist = null, hullHist = null;
 
       function updateHist(idx) {
         const date = histDates[idx];
         histLabel.textContent = date ?? "--";
         const points = (histByDay[date] || []);
-        const method = methodSelHist.value;
-        const power  = Number(powerSelHist.value);
-        const radius = Number(radiusSelHist.value);
-        interpLayerHist = renderInterpolation(mapHistoric, interpLayerHist, points, method, power, radius);
+        const maxScale = Number(scaleHist.value);
+        setLegend(maxScale, ['leg0Hist','leg10Hist','leg25Hist','leg50Hist']);
 
-        // Scatter pioggia–quota del giorno
+        const uniform = isUniform(points);
+        if (uniform) {
+          if (interpLayerHist) mapHistoric.removeLayer(interpLayerHist);
+          hullHist = drawHull(mapHistoric, points, hullHist);
+        } else {
+          if (hullHist) { mapHistoric.removeLayer(hullHist); hullHist = null; }
+          interpLayerHist = renderInterpolation(
+            mapHistoric, interpLayerHist, points, methodSelHist.value, Number(powerSelHist.value), Number(radiusSelHist.value), maxScale, Number(opacityHist.value)
+          );
+        }
+
         drawRainElevation(points);
       }
       histSlider.addEventListener("input", () => updateHist(Number(histSlider.value)));
-      methodSelHist.addEventListener("change", () => updateHist(Number(histSlider.value)));
-      powerSelHist.addEventListener("change", () => updateHist(Number(histSlider.value)));
-      radiusSelHist.addEventListener("change", () => updateHist(Number(histSlider.value)));
+      [methodSelHist, powerSelHist, radiusSelHist, opacityHist, scaleHist].forEach(el => el.addEventListener("change", () => updateHist(Number(histSlider.value))));
       updateHist(Number(histSlider.value));
     }
 
-    // --- Annual map (current year) ---
+    // Annual map (anno in corso)
     async function loadAnnualMap() {
       const annualByDay = {};
+      const annualRunDatesLocal = [];
       for (let name in locations) {
         const [lat, lon, z] = locations[name];
         const { data, runDate } = await fetchHistoric(lat, lon, isoDate(startYear), isoDate(endYear));
-        if (runDate) annualRunDates.push(runDate);
+        if (runDate) { annualRunDates.push(runDate); annualRunDatesLocal.push(runDate); }
         const dTimes = data?.daily?.time || [];
         const dSum   = data?.daily?.precipitation_sum || [];
         for (let i=0;i<dTimes.length;i++) {
@@ -611,13 +691,12 @@
           const v = Number(dSum[i] ?? 0);
           annualByDay[d] = annualByDay[d] || [];
           annualByDay[d].push({lat, lon, val: v, z});
-
           seriesYearPerStation[name] = seriesYearPerStation[name] || {};
           seriesYearPerStation[name][d] = v;
         }
       }
       document.getElementById("annualRun").textContent =
-        `Ultimo aggiornamento reanalisi: ${formatHttpDate(annualRunDates.sort().slice(-1)[0])}`;
+        `Ultimo aggiornamento reanalisi: ${formatHttpDate(annualRunDatesLocal.sort().slice(-1)[0])}`;
       document.getElementById("annualTablesRun").textContent =
         `Ultimo aggiornamento reanalisi: ${formatHttpDate(annualRunDates.sort().slice(-1)[0])}`;
 
@@ -628,30 +707,47 @@
       const methodSelAnnual = document.getElementById("interpMethodAnnual");
       const powerSelAnnual  = document.getElementById("idwPowerAnnual");
       const radiusSelAnnual = document.getElementById("idwRadiusAnnual");
+      const opacityAnn      = document.getElementById("opacityAnn");
+      const scaleAnn        = document.getElementById("scaleAnn");
 
       annualSlider.min = 0; annualSlider.max = Math.max(0, annualDates.length-1); annualSlider.value = annualSlider.max;
-      let interpLayerAnnual = null;
+      let interpLayerAnnual = null, hullAnn = null;
+
+      function setLegendAnn() {
+        const maxScale = Number(scaleAnn.value);
+        document.getElementById('leg0Ann').textContent = '0';
+        document.getElementById('leg10Ann').textContent = `${Math.round(maxScale*0.166)}`;
+        document.getElementById('leg25Ann').textContent = `${Math.round(maxScale*0.416)}`;
+        document.getElementById('leg50Ann').textContent = `${Math.round(maxScale*0.833)}+`;
+      }
 
       function updateAnnual(idx) {
         const date = annualDates[idx];
         annualLabel.textContent = date ?? "--";
         const points = (annualByDay[date] || []);
-        const method = methodSelAnnual.value;
-        const power  = Number(powerSelAnnual.value);
-        const radius = Number(radiusSelAnnual.value);
-        interpLayerAnnual = renderInterpolation(mapAnnual, interpLayerAnnual, points, method, power, radius);
+        setLegendAnn();
+        const maxScale = Number(scaleAnn.value);
 
-        // Scatter pioggia–quota del giorno
+        const uniform = isUniform(points);
+        if (uniform) {
+          if (interpLayerAnnual) mapAnnual.removeLayer(interpLayerAnnual);
+          hullAnn = drawHull(mapAnnual, points, hullAnn);
+        } else {
+          if (hullAnn) { mapAnnual.removeLayer(hullAnn); hullAnn = null; }
+          interpLayerAnnual = renderInterpolation(
+            mapAnnual, interpLayerAnnual, points, methodSelAnnual.value, Number(powerSelAnnual.value), Number(radiusSelAnnual.value), maxScale, Number(opacityAnn.value)
+          );
+        }
+
         drawRainElevation(points);
       }
       annualSlider.addEventListener("input", () => updateAnnual(Number(annualSlider.value)));
-      methodSelAnnual.addEventListener("change", () => updateAnnual(Number(annualSlider.value)));
-      powerSelAnnual.addEventListener("change", () => updateAnnual(Number(annualSlider.value)));
-      radiusSelAnnual.addEventListener("change", () => updateAnnual(Number(annualSlider.value)));
+      [methodSelAnnual, powerSelAnnual, radiusSelAnnual, opacityAnn, scaleAnn].forEach(el => el.addEventListener("change", () => updateAnnual(Number(annualSlider.value))));
+      setLegendAnn();
       updateAnnual(Number(annualSlider.value));
     }
 
-    // --- Tabelle annuali (tutti gli anni disponibili) ---
+    // Tabelle annuali (ultimi 5 anni, skip se non disponibili)
     async function fetchYear(lat, lon, year) {
       const start = `${year}-01-01`;
       const end = (year === currentYear) ? isoDate(new Date()) : `${year}-12-31`;
@@ -666,8 +762,7 @@
 
     function rollingMaxSum(hourlyTimes, hourlyVals, hoursWindow) {
       if (!hourlyTimes || !hourlyVals || hourlyTimes.length !== hourlyVals.length) return 0;
-      const n = hourlyVals.length;
-      const w = hoursWindow;
+      const n = hourlyVals.length, w = hoursWindow;
       let maxSum = 0, curr = 0, q = [];
       for (let i=0; i<n; i++) {
         const v = Number(hourlyVals[i] ?? 0);
@@ -689,8 +784,9 @@
     }
 
     async function loadAnnualTables() {
-      const years = Array.from({length: (currentYear - firstYear + 1)}, (_, i) => firstYear + i);
+      const years = Array.from({length: (currentYear - firstOfLast5 + 1)}, (_, i) => firstOfLast5 + i);
       const container = document.getElementById("annualTables");
+      container.innerHTML = '';
 
       for (let name in locations) {
         const [lat, lon] = locations[name];
@@ -700,22 +796,27 @@
           <th>Max 1h</th><th>Max 3h</th><th>Max 6h</th><th>Max 12h</th><th>Max 24h</th><th>Max 48h</th><th>Max 72h</th>
           <th>Giorni piovosi</th></tr></thead><tbody>`;
 
+        seriesLast5PerStation[name] = seriesLast5PerStation[name] || {};
+
         for (const y of years) {
           let payload;
           try { payload = await fetchYear(lat, lon, y); }
           catch (e) { console.warn("Annual fetch error", name, y, e); continue; }
           const data = payload.data;
+          if (!data?.daily?.time || data.daily.time.length === 0) {
+            // anno non disponibile, salta
+            continue;
+          }
           if (payload.runDate) annualRunDates.push(payload.runDate);
 
-          const dTimes = data?.daily?.time;
-          const dSum   = data?.daily?.precipitation_sum;
+          const dTimes = data.daily.time;
+          const dSum   = data.daily.precipitation_sum;
           const hTimes = data?.hourly?.time;
           const hVals  = data?.hourly?.precipitation;
 
-          // Serie completa per correlazioni "tutti gli anni"
-          seriesAllPerStation[name] = seriesAllPerStation[name] || {};
-          for (let i=0;i<(dTimes?.length||0);i++) {
-            seriesAllPerStation[name][dTimes[i]] = Number(dSum?.[i] ?? 0);
+          // Serie per correlazione ultimi 5 anni
+          for (let i=0;i<dTimes.length;i++) {
+            seriesLast5PerStation[name][dTimes[i]] = Number(dSum[i] ?? 0);
           }
 
           const total = (dSum || []).reduce((a,b)=>a+Number(b||0),0);
@@ -743,7 +844,7 @@
         `Ultimo aggiornamento reanalisi: ${formatHttpDate(annualRunDates.sort().slice(-1)[0])}`;
     }
 
-    // --- Correlazioni ---
+    // Correlazioni
     function toAlignedArray(seriesObj, dates) {
       return dates.map(d => Number(seriesObj[d] ?? 0));
     }
@@ -771,7 +872,8 @@
 
     function drawMatrix(canvasId, labels, matrix) {
       const ctx = document.getElementById(canvasId).getContext('2d');
-      new Chart(ctx, {
+      if (window._corrMatrixChart) window._corrMatrixChart.destroy();
+      window._corrMatrixChart = new Chart(ctx, {
         type: 'bar',
         data: {
           labels,
@@ -797,7 +899,8 @@
 
     function drawLag(canvasId, seriesLabel, lagData) {
       const ctx = document.getElementById(canvasId).getContext('2d');
-      new Chart(ctx, {
+      if (window._corrLagChart) window._corrLagChart.destroy();
+      window._corrLagChart = new Chart(ctx, {
         type: 'line',
         data: {
           labels: lagData.map(x => x.lag),
@@ -845,21 +948,25 @@
           seriesSource = seriesYearPerStation;
           dates = Object.keys(seriesYearPerStation[refName]||{}).sort();
         } else {
-          seriesSource = seriesAllPerStation;
-          dates = Object.keys(seriesAllPerStation[refName]||{}).sort();
+          seriesSource = seriesLast5PerStation;
+          dates = Object.keys(seriesLast5PerStation[refName]||{}).sort();
+        }
+
+        // Se non ci sono dati, esci pulito
+        if (!dates || dates.length === 0) {
+          drawMatrix('corrMatrix', labels, labels.map(()=>labels.map(()=>0)));
+          drawLag('corrLag', 'N/D', [{lag:-3,r:0},{lag:-2,r:0},{lag:-1,r:0},{lag:0,r:0},{lag:1,r:0},{lag:2,r:0},{lag:3,r:0}]);
+          return;
         }
 
         const matrix = labels.map(a => {
           const A = toAlignedArray(seriesSource[a]||{}, dates);
-          return labels.map(b => {
-            const B = toAlignedArray(seriesSource[b]||{}, dates);
-            return pearson(A,B);
-          });
+          return labels.map(b => pearson(A, toAlignedArray(seriesSource[b]||{}, dates)));
         });
         drawMatrix('corrMatrix', labels, matrix);
 
-        // Lag vs la stazione con correlazione più alta (escludendo ref)
-        let bestName = labels[0] === refName ? labels[1] : labels[0];
+        // Lag vs stazione con corr più alta (escludendo ref)
+        let bestName = labels.find(n => n !== refName) || refName;
         let bestR = -Infinity;
         for (const name of labels) {
           if (name === refName) continue;
@@ -884,11 +991,12 @@
       recompute();
     }
 
-    // --- Pioggia vs quota (scatter) ---
+    // Scatter pioggia–quota
     function drawRainElevation(points) {
       const ctx = document.getElementById('rainElevation').getContext('2d');
+      if (window._rainElevChart) window._rainElevChart.destroy();
       const dataPts = points.map(p => ({x: p.z, y: p.val}));
-      new Chart(ctx, {
+      window._rainElevChart = new Chart(ctx, {
         type: 'scatter',
         data: { datasets: [{ label: 'mm vs quota (m)', data: dataPts, backgroundColor: 'rgba(33,85,181,0.6)' }] },
         options: { scales: { x: { title: { text: 'Quota (m)', display: true } }, y: { title: { text: 'mm/giorno', display: true } } } }
@@ -900,8 +1008,8 @@
       try {
         await loadBase();
         await loadAnnualMap();
-        await loadAnnualTables();  // può richiedere tempo (molti anni)
-        buildCorrelations();
+        await loadAnnualTables();   // ultimi 5 anni con skip
+        buildCorrelations();        // dopo annuali => last5 disponibile
       } catch (e) {
         console.error("Errore generale:", e);
         document.getElementById("historyLoading").textContent = "Errore caricamento storico.";
@@ -912,3 +1020,5 @@
   </script>
 </body>
 </html>
+
+
