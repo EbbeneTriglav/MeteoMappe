@@ -1,0 +1,1189 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8"/>
+  <title>Stazione Cornalita — San Giovanni Bianco (ARPA)</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;600;700&display=swap');
+
+    :root {
+      --bg:      #0b1120;
+      --surface: #111927;
+      --card:    #151f30;
+      --card2:   #1a2840;
+      --border:  #1e3050;
+      --accent:  #4fc3f7;
+      --accent2: #81d4fa;
+      --green:   #4caf82;
+      --orange:  #ffb347;
+      --red:     #ef5350;
+      --purple:  #b39ddb;
+      --text:    #e3eaf8;
+      --muted:   #7a94b8;
+      --mono:    'IBM Plex Mono', monospace;
+      --sans:    'IBM Plex Sans', sans-serif;
+    }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body {
+      font-family: var(--sans);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── HEADER ── */
+    header {
+      background: linear-gradient(135deg, #0a1628 0%, #0d2344 50%, #1a3a5c 100%);
+      padding: 18px 28px 14px;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;
+    }
+    .header-left h1 {
+      font-size: 1.25rem; font-weight: 700; color: var(--accent); letter-spacing: 0.04em;
+    }
+    .header-left .subtitle {
+      font-size: 12px; color: var(--muted); margin-top: 3px; font-family: var(--mono);
+    }
+    .header-badges { display: flex; gap: 8px; flex-wrap: wrap; }
+    .hbadge {
+      font-size: 11px; font-family: var(--mono); font-weight: 600;
+      padding: 3px 10px; border-radius: 4px; border: 1px solid;
+    }
+    .hbadge.blue  { color: var(--accent);  border-color: var(--accent);  background: rgba(79,195,247,0.08); }
+    .hbadge.green { color: var(--green);   border-color: var(--green);   background: rgba(76,175,130,0.08); }
+    .hbadge.orange{ color: var(--orange);  border-color: var(--orange);  background: rgba(255,179,71,0.08); }
+    .nav-link {
+      color: var(--muted); text-decoration: none; font-size: 12px; font-weight: 600;
+      border: 1px solid var(--border); padding: 5px 14px; border-radius: 16px;
+      background: rgba(255,255,255,0.04); transition: all 0.2s;
+    }
+    .nav-link:hover { color: var(--text); border-color: var(--accent); }
+
+    /* ── LOADING ── */
+    .loading-overlay {
+      position: fixed; inset: 0; background: rgba(11,17,32,0.94); z-index: 999;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+    }
+    .spinner {
+      width: 44px; height: 44px; border: 4px solid var(--border);
+      border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-overlay p { color: var(--muted); font-size: 14px; font-family: var(--mono); }
+    #loadingDetail { color: var(--accent); font-size: 12px; }
+
+    /* ── LAYOUT ── */
+    .main { max-width: 1440px; margin: 0 auto; padding: 22px 20px 60px; }
+
+    /* ── SOURCE STATUS BAR ── */
+    .source-bar {
+      display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
+      padding: 10px 16px; background: var(--card); border: 1px solid var(--border);
+      border-radius: 8px; margin-bottom: 18px;
+    }
+    .source-item { display: flex; align-items: center; gap: 7px; font-size: 12px; }
+    .src-dot { width: 9px; height: 9px; border-radius: 50%; }
+    .src-dot.live   { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .src-dot.file   { background: var(--orange); }
+    .src-dot.empty  { background: var(--border); }
+    .src-label { color: var(--muted); }
+    .src-value { color: var(--text); font-family: var(--mono); font-weight: 600; }
+    .source-bar .divider { width: 1px; height: 22px; background: var(--border); margin: 0 6px; }
+
+    /* ── UPLOAD ZONE ── */
+    .upload-card {
+      background: var(--card); border: 1px dashed var(--border); border-radius: 10px;
+      padding: 18px 20px; margin-bottom: 18px; display: flex; align-items: center; gap: 16px;
+      flex-wrap: wrap; transition: border-color 0.2s;
+    }
+    .upload-card:hover { border-color: var(--accent); }
+    .upload-card .upload-icon { font-size: 2rem; opacity: 0.5; }
+    .upload-card h3 { font-size: 14px; font-weight: 700; color: var(--accent); }
+    .upload-card p  { font-size: 12px; color: var(--muted); margin-top: 3px; line-height: 1.5; }
+    .upload-card input[type=file] { display: none; }
+    .btn-upload {
+      background: transparent; color: var(--accent); border: 1.5px solid var(--accent);
+      padding: 7px 18px; border-radius: 6px; font-size: 13px; font-weight: 700;
+      cursor: pointer; transition: all 0.2s; white-space: nowrap;
+    }
+    .btn-upload:hover { background: var(--accent); color: var(--bg); }
+    #uploadStatus { font-size: 12px; font-family: var(--mono); color: var(--green); }
+
+    /* ── TABS ── */
+    .tabs { display: flex; gap: 3px; margin-bottom: 20px; border-bottom: 2px solid var(--border); flex-wrap: wrap; }
+    .tab {
+      padding: 9px 20px; font-size: 13px; font-weight: 700; cursor: pointer;
+      border-radius: 7px 7px 0 0; color: var(--muted); background: transparent;
+      border: none; transition: all 0.2s; letter-spacing: 0.01em; font-family: var(--sans);
+    }
+    .tab:hover { color: var(--text); background: var(--card); }
+    .tab.active { color: var(--accent); background: var(--card); border-bottom: 2px solid var(--accent); }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* ── CARDS ── */
+    .card {
+      background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+      padding: 20px 22px; margin-bottom: 18px;
+    }
+    .card-title {
+      font-size: 14px; font-weight: 700; color: var(--accent); margin-bottom: 14px;
+      display: flex; align-items: center; gap: 8px; letter-spacing: 0.02em;
+    }
+
+    /* ── STAT PILLS ── */
+    .kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap: 10px; margin-bottom: 18px; }
+    .kpi {
+      background: var(--card2); border: 1px solid var(--border); border-radius: 8px;
+      padding: 12px 14px;
+    }
+    .kpi-label { font-size: 10px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.07em; }
+    .kpi-value { font-size: 1.55rem; font-weight: 700; color: var(--accent); font-family: var(--mono); margin: 4px 0; }
+    .kpi-sub   { font-size: 10px; color: var(--muted); }
+
+    /* ── CONTROLS ── */
+    .ctrl-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
+    .ctrl-row label { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    select {
+      background: var(--card2); color: var(--text); border: 1px solid var(--border);
+      padding: 5px 10px; border-radius: 6px; font-size: 12px; cursor: pointer; font-family: var(--sans);
+    }
+    select:focus { outline: 1px solid var(--accent); }
+
+    /* ── CHART ── */
+    .chart-wrap { position: relative; }
+    .chart-wrap canvas { width: 100% !important; }
+
+    /* ── YEAR TOGGLES ── */
+    .year-bar { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+    .yr-btn {
+      padding: 3px 11px; border-radius: 12px; font-size: 11px; font-weight: 700;
+      cursor: pointer; border: 1.5px solid; transition: all 0.15s; font-family: var(--mono);
+      background: transparent; color: var(--muted);
+    }
+    .yr-btn.on { color: var(--bg) !important; }
+
+    /* ── TABLE ── */
+    .data-table { width: 100%; border-collapse: collapse; font-size: 12px; font-family: var(--mono); }
+    .data-table th { background: var(--card2); color: var(--accent); font-weight: 700; padding: 7px 10px; text-align: left; border-bottom: 1px solid var(--border); }
+    .data-table td { padding: 6px 10px; border-bottom: 1px solid var(--border); color: var(--text); }
+    .data-table tr:hover td { background: var(--card2); }
+    .tbl-wrap { overflow-x: auto; max-height: 420px; overflow-y: auto; }
+
+    /* ── HEATMAP ── */
+    .hm-outer { overflow-x: auto; }
+    .hm-row { display: flex; gap: 3px; margin-bottom: 3px; align-items: center; }
+    .hm-cell {
+      width: 50px; height: 34px; border-radius: 4px; display: flex; align-items: center;
+      justify-content: center; font-size: 10px; font-weight: 700; font-family: var(--mono);
+      cursor: default; transition: transform 0.1s; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.7);
+    }
+    .hm-cell:hover { transform: scale(1.12); z-index: 5; position: relative; }
+    .hm-ylbl { width: 38px; text-align: right; font-size: 11px; color: var(--muted); padding-right: 6px; font-family: var(--mono); }
+    .hm-hlbl { width: 50px; text-align: center; font-size: 10px; color: var(--muted); font-weight: 700; }
+
+    /* ── INFO NOTE ── */
+    .note { font-size: 11px; color: var(--muted); margin-top: 8px; line-height: 1.5; }
+    .note b { color: var(--text); }
+
+    /* ── CHIP ── */
+    .chip-bar { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+    .chip {
+      padding: 3px 12px; border-radius: 14px; font-size: 11px; font-weight: 700;
+      cursor: pointer; border: 1.5px solid; opacity: 0.38; color: var(--text); transition: opacity 0.15s;
+    }
+    .chip.on { opacity: 1; }
+
+    /* ── RECENT TABLE  ── */
+    .recent-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px,1fr)); gap: 14px; }
+    .sensor-card {
+      background: var(--card2); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px;
+    }
+    .sensor-card .sc-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .sensor-card .sc-name { font-size: 13px; font-weight: 700; color: var(--text); }
+    .sensor-card .sc-unit { font-size: 11px; color: var(--muted); font-family: var(--mono); }
+    .sensor-card .sc-val  { font-size: 2rem; font-weight: 700; font-family: var(--mono); }
+    .sensor-card .sc-time { font-size: 10px; color: var(--muted); margin-top: 4px; }
+    .mini-spark { height: 40px; }
+  </style>
+</head>
+<body>
+
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="spinner"></div>
+  <p>Connessione Open Data Regione Lombardia…</p>
+  <p id="loadingDetail">Inizializzazione</p>
+</div>
+
+<header>
+  <div class="header-left">
+    <h1>📡 Stazione Cornalita — San Giovanni Bianco</h1>
+    <div class="subtitle">IdStazione: 119 · Lat 45.7155° N · Lon 9.6567° E · Quota: 622 m s.l.m. · ARPA Lombardia</div>
+  </div>
+  <div class="header-badges">
+    <span class="hbadge blue">PP #2278</span>
+    <span class="hbadge orange">T #2270</span>
+    <span class="hbadge green">UR #2271</span>
+    <span class="hbadge blue">RG #2275</span>
+    <span class="hbadge orange">VV #11743</span>
+    <span class="hbadge green">DV #2277</span>
+  </div>
+  <a href="index_v9.html" class="nav-link">← Mappa Meteo</a>
+</header>
+
+<div class="main">
+
+  <!-- SOURCE STATUS -->
+  <div class="source-bar" id="sourceBar">
+    <div class="source-item">
+      <div class="src-dot empty" id="dotLive"></div>
+      <span class="src-label">API live (Socrata):</span>
+      <span class="src-value" id="lblLive">—</span>
+    </div>
+    <div class="divider"></div>
+    <div class="source-item">
+      <div class="src-dot empty" id="dotFile"></div>
+      <span class="src-label">Storico CSV:</span>
+      <span class="src-value" id="lblFile">non caricato</span>
+    </div>
+    <div class="divider"></div>
+    <div class="source-item">
+      <span class="src-label">Periodo totale:</span>
+      <span class="src-value" id="lblPeriod">—</span>
+    </div>
+  </div>
+
+  <!-- UPLOAD CSV STORICO -->
+  <div class="upload-card" id="uploadCard">
+    <div class="upload-icon">📂</div>
+    <div style="flex:1">
+      <h3>Carica storico CSV da ARPA</h3>
+      <p>
+        Scarica i dati storici dal <a href="https://www.arpalombardia.it/temi-ambientali/meteo-e-clima/form-richiesta-dati/" target="_blank" style="color:var(--accent)">form ARPA</a>
+        (sensore <b>2278 – Precipitazione</b>, aggregazione giornaliera, formato CSV).<br>
+        I grafici si aggiornano automaticamente fondendo i dati storici con quelli live dell'API.
+      </p>
+      <div style="margin-top:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <label for="csvInput" class="btn-upload">📁 Seleziona file CSV / Excel</label>
+        <input type="file" id="csvInput" accept=".csv,.xlsx,.xls"/>
+        <span id="uploadStatus"></span>
+      </div>
+    </div>
+    <div style="font-size:11px;color:var(--muted);max-width:240px;line-height:1.6">
+      <b style="color:var(--text)">Formato atteso (CSV ARPA):</b><br>
+      <code style="color:var(--accent)">Data;IdSensore;Valore;...</code><br>
+      oppure export Excel con colonne Data / Valore.<br>
+      <br>Accettate anche più colonne (tutte ignorabili tranne Data e Valore).
+    </div>
+  </div>
+
+  <!-- KPI ROW -->
+  <div class="kpi-row" id="kpiRow">
+    <div class="kpi"><div class="kpi-label">Ultimo dato</div><div class="kpi-value" id="kpiLast">—</div><div class="kpi-sub" id="kpiLastDate">—</div></div>
+    <div class="kpi"><div class="kpi-label">Anno in corso</div><div class="kpi-value" id="kpiYear">—</div><div class="kpi-sub">mm cumulati</div></div>
+    <div class="kpi"><div class="kpi-label">Media annua</div><div class="kpi-value" id="kpiMeanYear">—</div><div class="kpi-sub">mm/anno (storico)</div></div>
+    <div class="kpi"><div class="kpi-label">Max giornaliero</div><div class="kpi-value" id="kpiMaxDay">—</div><div class="kpi-sub" id="kpiMaxDayDate">—</div></div>
+    <div class="kpi"><div class="kpi-label">Max mensile</div><div class="kpi-value" id="kpiMaxMonth">—</div><div class="kpi-sub" id="kpiMaxMonthDate">—</div></div>
+    <div class="kpi"><div class="kpi-label">Giorni piovosi/anno</div><div class="kpi-value" id="kpiWetDays">—</div><div class="kpi-sub">media storica</div></div>
+  </div>
+
+  <!-- TABS -->
+  <div class="tabs">
+    <button class="tab active" data-tab="realtime">⚡ Dati recenti</button>
+    <button class="tab" data-tab="cumulate">📈 Cumulate annuali</button>
+    <button class="tab" data-tab="heatmap">🟦 Heatmap mensile</button>
+    <button class="tab" data-tab="mensili">📅 Distribuzioni mensili</button>
+    <button class="tab" data-tab="eventi">⛈ Eventi estremi</button>
+    <button class="tab" data-tab="tabella">📋 Tabella dati</button>
+  </div>
+
+  <!-- TAB: REALTIME -->
+  <div class="tab-panel active" id="tab-realtime">
+    <div class="card">
+      <div class="card-title">⚡ Ultime misure in tempo reale (API Socrata)</div>
+      <div class="recent-grid" id="recentGrid">
+        <div style="color:var(--muted);font-size:13px">Caricamento sensori in corso…</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">📊 Precipitazione — ultimi 30 giorni</div>
+      <div class="chart-wrap" style="height:280px"><canvas id="chartRecent30"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">🌡 Temperatura — ultimi 30 giorni</div>
+      <div class="chart-wrap" style="height:240px"><canvas id="chartTempRecent"></canvas></div>
+    </div>
+  </div>
+
+  <!-- TAB: CUMULATE -->
+  <div class="tab-panel" id="tab-cumulate">
+    <div class="card">
+      <div class="card-title">📈 Curve cumulate annuali</div>
+      <div class="ctrl-row">
+        <label>Normalizza:</label>
+        <select id="cumuNorm"><option value="0">mm assoluti</option><option value="1">% del totale</option></select>
+        <label>Spessore:</label>
+        <select id="cumuThick"><option value="1.5">Sottile</option><option value="2.5" selected>Normale</option><option value="4">Spesso</option></select>
+      </div>
+      <div class="year-bar" id="cumuYearBar"></div>
+      <div class="chart-wrap" style="height:420px"><canvas id="chartCumulate"></canvas></div>
+      <p class="note">Pioggia cumulata progressiva dal 1° gennaio. <b>Fonti sovrapposte</b>: colori pieni = API live, tratteggiato = CSV storico ARPA.</p>
+    </div>
+  </div>
+
+  <!-- TAB: HEATMAP -->
+  <div class="tab-panel" id="tab-heatmap">
+    <div class="card">
+      <div class="card-title">🟦 Heatmap pioggia mensile (mm)</div>
+      <div class="ctrl-row">
+        <label>Scala:</label>
+        <select id="hmScale">
+          <option value="auto">Automatica</option>
+          <option value="150">0–150 mm</option>
+          <option value="250">0–250 mm</option>
+          <option value="400">0–400 mm</option>
+        </select>
+        <label>Valori:</label>
+        <select id="hmValues"><option value="1">Mostra</option><option value="0">Nascondi</option></select>
+      </div>
+      <div class="hm-outer" id="hmContainer"></div>
+      <p class="note">Asse X = mesi (Gen–Dic) · Asse Y = anni. Hover per valore esatto.</p>
+    </div>
+  </div>
+
+  <!-- TAB: MENSILI -->
+  <div class="tab-panel" id="tab-mensili">
+    <div class="card">
+      <div class="card-title">📅 Distribuzione mensile storica (media ± σ)</div>
+      <div class="chart-wrap" style="height:360px"><canvas id="chartMensili"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">🌡 Temperatura media mensile storica</div>
+      <div class="chart-wrap" style="height:300px"><canvas id="chartTempMensili"></canvas></div>
+    </div>
+  </div>
+
+  <!-- TAB: EVENTI -->
+  <div class="tab-panel" id="tab-eventi">
+    <div class="card">
+      <div class="card-title">⛈ Giorni con precipitazione intensa</div>
+      <div class="ctrl-row">
+        <label>Soglia:</label>
+        <select id="evtThresh">
+          <option value="10">≥ 10 mm</option>
+          <option value="20" selected>≥ 20 mm</option>
+          <option value="30">≥ 30 mm</option>
+          <option value="50">≥ 50 mm</option>
+        </select>
+      </div>
+      <div class="chart-wrap" style="height:300px"><canvas id="chartEventi"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">🏆 Top-20 eventi più piovosi</div>
+      <div class="tbl-wrap" id="topEventiTable"></div>
+    </div>
+  </div>
+
+  <!-- TAB: TABELLA -->
+  <div class="tab-panel" id="tab-tabella">
+    <div class="card">
+      <div class="card-title">📋 Dati giornalieri completi</div>
+      <div class="ctrl-row">
+        <label>Anno:</label>
+        <select id="tblYear"></select>
+        <label>Mese:</label>
+        <select id="tblMonth">
+          <option value="0">Tutti</option>
+          <option value="1">Gennaio</option><option value="2">Febbraio</option>
+          <option value="3">Marzo</option><option value="4">Aprile</option>
+          <option value="5">Maggio</option><option value="6">Giugno</option>
+          <option value="7">Luglio</option><option value="8">Agosto</option>
+          <option value="9">Settembre</option><option value="10">Ottobre</option>
+          <option value="11">Novembre</option><option value="12">Dicembre</option>
+        </select>
+        <label>Solo giorni piovosi:</label>
+        <select id="tblRainOnly"><option value="0">No</option><option value="1">Sì (≥0.1mm)</option></select>
+      </div>
+      <div class="tbl-wrap" id="tblContainer"></div>
+    </div>
+  </div>
+
+</div><!-- /main -->
+
+<script>
+'use strict';
+
+// ═══════════════════════════════════════════════════════════
+// COSTANTI STAZIONE
+// ═══════════════════════════════════════════════════════════
+const STATION = {
+  id:    119,
+  name:  'San Giovanni Bianco Cornalita',
+  lat:   45.7155,
+  lon:   9.6567,
+  alt:   622,
+  sensors: {
+    PP:  { id: 2278, label: 'Precipitazione',     unit: 'mm',   color: '#4fc3f7' },
+    T:   { id: 2270, label: 'Temperatura',         unit: '°C',   color: '#ffb347' },
+    UR:  { id: 2271, label: 'Umidità Relativa',    unit: '%',    color: '#4caf82' },
+    RG:  { id: 2275, label: 'Radiazione Globale',  unit: 'W/m²', color: '#ffd54f' },
+    DV:  { id: 2277, label: 'Direzione Vento',     unit: '°',    color: '#b39ddb' },
+    VV:  { id:11743, label: 'Velocità Vento',      unit: 'm/s',  color: '#80cbc4' },
+  }
+};
+
+// Socrata API — Open Data Regione Lombardia
+// Dataset 647i-nhxk — dati sensori meteo (ultimi ~4 anni, aggiornato ogni ora circa)
+const SOCRATA_BASE = 'https://www.dati.lombardia.it/resource/647i-nhxk.json';
+
+const MONTHS = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
+const YEAR_PALETTE = [
+  '#4fc3f7','#81c784','#ffb347','#f06292','#ba68c8',
+  '#4dd0e1','#aed581','#ff8a65','#90a4ae','#fff176',
+  '#a5d6a7','#ef9a9a','#80cbc4','#ffe082','#ce93d8',
+  '#80deea','#c5e1a5','#ffcc80','#b0bec5','#b39ddb',
+  '#e6ee9c','#80cbc4','#f48fb1','#b0bec5',
+];
+
+const fmt  = (v, d=1) => v == null ? '—' : Number(v).toFixed(d);
+const fmtDate = s => s ? s.slice(0,10) : '—';
+const currentYear = new Date().getFullYear();
+
+// ═══════════════════════════════════════════════════════════
+// DATA STORE — unione live + storico
+// ═══════════════════════════════════════════════════════════
+// Struttura: ppDaily[year][month][day] = mm  (1-based month/day)
+// ppMonthly[year][month]  = mm totali
+// ppYears    = sorted array of years
+// rawDaily   = [{date:'YYYY-MM-DD', mm, src:'live'|'csv'}]
+
+let rawDaily   = [];       // sorted by date desc
+let ppByDate   = {};       // 'YYYY-MM-DD' → mm
+let ppByYearMonth = {};    // year → month(0-11) → mm
+let tempByDate = {};       // 'YYYY-MM-DD' → °C (media)
+let liveRange  = null;     // {min, max}
+let csvRange   = null;
+
+// ═══════════════════════════════════════════════════════════
+// SOCRATA FETCH  — precipitation + temperature
+// ═══════════════════════════════════════════════════════════
+
+async function socrataSensorDays(sensorId, startDate, endDate) {
+  // Ritorna array di {data, valore} giornalieri ordinati
+  // Socrata usa $where con data_trunc o semplice range
+  const where = encodeURIComponent(
+    `idsensore=${sensorId} AND data >= '${startDate}T00:00:00.000' AND data <= '${endDate}T23:59:59.999'`
+  );
+  const url = `${SOCRATA_BASE}?$where=${where}&$limit=5000&$order=data ASC`;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`Socrata HTTP ${r.status}`);
+  return r.json();
+}
+
+async function socrataLastN(sensorId, n=1000) {
+  const url = `${SOCRATA_BASE}?idsensore=${sensorId}&$limit=${n}&$order=data+DESC`;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`Socrata HTTP ${r.status}`);
+  return r.json();
+}
+
+// ═══════════════════════════════════════════════════════════
+// PARSE & MERGE
+// ═══════════════════════════════════════════════════════════
+function parseSocrataRows(rows, sensorId) {
+  // rows: [{data: "2024-01-15T00:00:00.000", valore: "3.2", idsensore: "2278"}, ...]
+  // Per precipitazione ARPA: valore = cumulata del giorno (mm)
+  const out = {};
+  for (const r of rows) {
+    const dateStr = (r.data || r.Data || '').slice(0, 10);
+    if (!dateStr) continue;
+    const val = parseFloat(r.valore ?? r.Valore ?? 0);
+    if (!isNaN(val)) out[dateStr] = (out[dateStr] || 0) + val; // somma per sicurezza
+  }
+  return out;
+}
+
+function mergeIntoStore(dateMap, src) {
+  for (const [date, mm] of Object.entries(dateMap)) {
+    if (ppByDate[date] === undefined || src === 'live') {
+      // Live ha priorità (più aggiornato)
+      ppByDate[date] = mm;
+    }
+  }
+}
+
+function rebuildDerivedData() {
+  // ppByDate → rawDaily, ppByYearMonth
+  rawDaily = Object.entries(ppByDate)
+    .map(([date, mm]) => ({ date, mm }))
+    .sort((a, b) => b.date.localeCompare(a.date));  // desc
+
+  ppByYearMonth = {};
+  for (const [date, mm] of Object.entries(ppByDate)) {
+    const [y, m] = date.split('-').map(Number);
+    if (!ppByYearMonth[y]) ppByYearMonth[y] = new Array(12).fill(0);
+    ppByYearMonth[y][m - 1] += mm;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// CSV / EXCEL PARSER
+// ═══════════════════════════════════════════════════════════
+function parseCSVArpa(text) {
+  // Formato ARPA tipico:
+  // "Data";"IdSensore";"NomeStazione";"Tipologia";"Valore";"Stato"
+  // "01/01/2010 00:00:00";"2278";"San Giovanni Bianco";"Precipitazione";"0,8";"VA"
+  const lines = text.trim().split('\n');
+  if (!lines.length) return {};
+  const sep  = lines[0].includes(';') ? ';' : ',';
+  const hdr  = lines[0].split(sep).map(h => h.replace(/"/g,'').trim().toLowerCase());
+  const iDate = hdr.findIndex(h => h.includes('data') || h.includes('date'));
+  const iVal  = hdr.findIndex(h => h.includes('valore') || h.includes('value') || h.includes('mm'));
+
+  if (iDate < 0 || iVal < 0) throw new Error(`Colonne Data/Valore non trovate. Header: ${hdr.join(',')}`);
+
+  const out = {};
+  for (let i = 1; i < lines.length; i++) {
+    const cols = lines[i].split(sep).map(c => c.replace(/"/g,'').trim());
+    if (!cols[iDate]) continue;
+    // Parse date: dd/MM/yyyy or yyyy-MM-dd
+    let dateStr = cols[iDate].trim().split(' ')[0];  // strip time
+    if (dateStr.includes('/')) {
+      const [d,m,y] = dateStr.split('/');
+      dateStr = `${y.length===2?'20'+y:y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
+    }
+    const val = parseFloat((cols[iVal] || '0').replace(',','.'));
+    if (!isNaN(val) && val >= 0) out[dateStr] = (out[dateStr] || 0) + val;
+  }
+  return out;
+}
+
+function parseXLSX(buffer) {
+  const wb = XLSX.read(buffer, { type: 'array' });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
+  if (!rows.length) return {};
+  const hdr = rows[0].map(h => String(h||'').toLowerCase().trim());
+  const iDate = hdr.findIndex(h => h.includes('data') || h.includes('date'));
+  const iVal  = hdr.findIndex(h => h.includes('valore') || h.includes('value') || h.includes('mm') || h.includes('prec'));
+  if (iDate < 0 || iVal < 0) throw new Error(`Colonne non trovate. Header: ${hdr.join(',')}`);
+  const out = {};
+  for (let i = 1; i < rows.length; i++) {
+    let rawDate = rows[i][iDate];
+    let val = parseFloat(String(rows[i][iVal]||0).replace(',','.'));
+    if (!rawDate || isNaN(val)) continue;
+    // Excel date serial number?
+    if (typeof rawDate === 'number') {
+      const d = XLSX.SSF.parse_date_code(rawDate);
+      rawDate = `${d.y}-${String(d.m).padStart(2,'0')}-${String(d.d).padStart(2,'0')}`;
+    } else {
+      rawDate = String(rawDate).trim().split(' ')[0];
+      if (rawDate.includes('/')) {
+        const [a,b,c] = rawDate.split('/');
+        const y = a.length===4 ? a : c; const m = a.length===4 ? b : b; const dd = a.length===4 ? c : a;
+        rawDate = `${y}-${String(m).padStart(2,'0')}-${String(dd).padStart(2,'0')}`;
+      }
+    }
+    if (val >= 0) out[rawDate] = (out[rawDate]||0) + val;
+  }
+  return out;
+}
+
+// ═══════════════════════════════════════════════════════════
+// CHARTS
+// ═══════════════════════════════════════════════════════════
+Chart.defaults.color = '#7a94b8';
+Chart.defaults.borderColor = '#1e3050';
+const charts = {};
+function destroyChart(id) { if(charts[id]){charts[id].destroy();delete charts[id];} }
+
+// ── Recent 30 days (precipitation bar)
+function renderRecent30() {
+  const days30 = rawDaily.slice(0, 90).reverse();  // up to 90 days from API
+  // Actually take last 30 calendar days
+  const today = new Date().toISOString().slice(0,10);
+  const d30 = new Date(); d30.setDate(d30.getDate() - 30);
+  const cutoff = d30.toISOString().slice(0,10);
+  const filtered = Object.entries(ppByDate)
+    .filter(([d]) => d >= cutoff)
+    .sort(([a],[b]) => a.localeCompare(b));
+
+  destroyChart('recent30');
+  const ctx = document.getElementById('chartRecent30').getContext('2d');
+  charts['recent30'] = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: filtered.map(([d]) => d),
+      datasets: [{
+        label: 'Precipitazione (mm)',
+        data:  filtered.map(([,v]) => v),
+        backgroundColor: filtered.map(([,v]) =>
+          v > 30 ? '#ef5350cc' : v > 10 ? '#ffb347cc' : '#4fc3f7aa'),
+        borderRadius: 3, borderSkipped: false,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: {
+        x: { type: 'time', time: { unit: 'day', displayFormats: { day: 'dd/MM' } },
+             grid: { color: '#1e3050' } },
+        y: { title: { display: true, text: 'mm', color: '#7a94b8' }, grid: { color: '#1e3050' }, beginAtZero: true }
+      },
+      plugins: {
+        legend: { labels: { color: '#e3eaf8' } },
+        tooltip: { callbacks: { label: i => `${fmt(i.raw,1)} mm` } }
+      }
+    }
+  });
+}
+
+// ── Temperature last 30 days
+function renderTempRecent() {
+  const d30 = new Date(); d30.setDate(d30.getDate()-30);
+  const cutoff = d30.toISOString().slice(0,10);
+  const filtered = Object.entries(tempByDate)
+    .filter(([d]) => d >= cutoff)
+    .sort(([a],[b]) => a.localeCompare(b));
+  if (!filtered.length) return;
+
+  destroyChart('tempRecent');
+  const ctx = document.getElementById('chartTempRecent').getContext('2d');
+  charts['tempRecent'] = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: filtered.map(([d]) => d),
+      datasets: [{
+        label: 'Temperatura media (°C)',
+        data: filtered.map(([,v]) => v),
+        borderColor: '#ffb347', borderWidth: 2, pointRadius: 2,
+        backgroundColor: 'rgba(255,179,71,0.08)', fill: true, tension: 0.4,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: {
+        x: { type: 'time', time: { unit: 'day', displayFormats: { day: 'dd/MM' } }, grid: { color: '#1e3050' } },
+        y: { title: { display: true, text: '°C', color: '#7a94b8' }, grid: { color: '#1e3050' } }
+      },
+      plugins: { legend: { labels: { color: '#e3eaf8' } } }
+    }
+  });
+}
+
+// ── Cumulate annuali
+function buildCumuYearBar() {
+  const bar = document.getElementById('cumuYearBar');
+  bar.innerHTML = '';
+  const years = Object.keys(ppByYearMonth).map(Number).sort();
+  years.forEach((y, i) => {
+    const col = YEAR_PALETTE[i % YEAR_PALETTE.length];
+    const btn = document.createElement('button');
+    btn.className = 'yr-btn on';
+    btn.dataset.year = y;
+    btn.textContent = y;
+    btn.style.borderColor = col;
+    btn.style.color = col;
+    btn.addEventListener('click', () => { btn.classList.toggle('on'); renderCumulate(); });
+    bar.appendChild(btn);
+  });
+}
+
+function renderCumulate() {
+  const normalize = document.getElementById('cumuNorm').value === '1';
+  const thick = Number(document.getElementById('cumuThick').value);
+  const activeYears = [...document.querySelectorAll('#cumuYearBar .yr-btn.on')]
+    .map(b => Number(b.dataset.year));
+  const years = Object.keys(ppByYearMonth).map(Number).sort();
+
+  const datasets = activeYears.map((y, idx) => {
+    const dates = Object.entries(ppByDate)
+      .filter(([d]) => d.startsWith(String(y)))
+      .sort(([a],[b]) => a.localeCompare(b));
+    if (!dates.length) return null;
+    let running = 0;
+    const vals = dates.map(([,mm]) => { running += mm; return running; });
+    const total = vals[vals.length-1] || 1;
+    const doys  = dates.map(([d]) => {
+      const dd = new Date(d); const jan1 = new Date(y,0,1);
+      return Math.floor((dd-jan1)/86400000)+1;
+    });
+    const col = YEAR_PALETTE[years.indexOf(y) % YEAR_PALETTE.length];
+    const isCurrentYear = y === currentYear;
+    return {
+      label: String(y),
+      data: doys.map((x,i) => ({ x, y: normalize ? vals[i]/total*100 : vals[i] })),
+      borderColor: col, backgroundColor: 'transparent',
+      borderWidth: isCurrentYear ? thick+1 : thick,
+      borderDash: [],
+      pointRadius: 0, tension: 0.2, parsing: false,
+      borderDashOffset: 0,
+    };
+  }).filter(Boolean);
+
+  destroyChart('cumulate');
+  const ctx = document.getElementById('chartCumulate').getContext('2d');
+  charts['cumulate'] = new Chart(ctx, {
+    type: 'line', data: { datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      scales: {
+        x: {
+          type: 'linear', min: 1, max: 366,
+          ticks: {
+            callback(v) {
+              const doy=[1,32,60,91,121,152,182,213,244,274,305,335];
+              const i=doy.indexOf(v); return i>=0?MONTHS[i]:'';
+            }, maxTicksLimit: 12, color: '#7a94b8'
+          },
+          title: { display: true, text: "Giorno dell'anno", color: '#7a94b8' },
+          grid: { color: '#1e3050' }
+        },
+        y: {
+          title: { display: true, text: normalize?'% cumulata':'mm cumulati', color: '#7a94b8' },
+          grid: { color: '#1e3050' }
+        }
+      },
+      plugins: {
+        legend: { labels: { color: '#e3eaf8', usePointStyle: true, pointStyleWidth: 18, font: { weight: 'bold' } } },
+        tooltip: { callbacks: {
+          title: items => `Giorno ${items[0]?.parsed?.x}`,
+          label: item => ` ${item.dataset.label}: ${fmt(item.parsed.y,1)}${normalize?'%':' mm'}`
+        }}
+      }
+    }
+  });
+}
+
+// ── Heatmap mensile
+function mmToColor(v, maxV) {
+  const t = Math.max(0, Math.min(1, maxV ? v/maxV : 0));
+  const stops = [[0,[11,26,107]],[0.2,[29,111,164]],[0.45,[46,170,181]],[0.65,[62,214,160]],[0.82,[255,224,102]],[0.93,[255,127,39]],[1,[196,0,0]]];
+  for (let i=0;i<stops.length-1;i++){
+    const [t0,c0]=stops[i],[t1,c1]=stops[i+1];
+    if(t>=t0&&t<=t1){const f=(t-t0)/(t1-t0);return `rgb(${Math.round(c0[0]+(c1[0]-c0[0])*f)},${Math.round(c0[1]+(c1[1]-c0[1])*f)},${Math.round(c0[2]+(c1[2]-c0[2])*f)})`;}
+  }
+  return '#c40000';
+}
+
+function renderHeatmap() {
+  const scaleOpt = document.getElementById('hmScale').value;
+  const showVal  = document.getElementById('hmValues').value === '1';
+  const years = Object.keys(ppByYearMonth).map(Number).sort();
+  if (!years.length) return;
+
+  let maxV = 0;
+  if (scaleOpt === 'auto') {
+    years.forEach(y => { if(ppByYearMonth[y]) maxV = Math.max(maxV, ...ppByYearMonth[y]); });
+  } else { maxV = Number(scaleOpt); }
+
+  const container = document.getElementById('hmContainer');
+  let html = `<div class="hm-row"><div class="hm-ylbl"></div>`;
+  MONTHS.forEach(m => html += `<div class="hm-hlbl">${m}</div>`);
+  html += '</div>';
+
+  years.forEach(y => {
+    html += `<div class="hm-row"><div class="hm-ylbl">${y}</div>`;
+    for (let m=0; m<12; m++) {
+      const v = ppByYearMonth[y]?.[m] ?? 0;
+      const bg = mmToColor(v, maxV);
+      const lbl = showVal ? Math.round(v) : '';
+      html += `<div class="hm-cell" style="background:${bg}" title="${y} ${MONTHS[m]}: ${fmt(v,1)} mm">${lbl}</div>`;
+    }
+    html += '</div>';
+  });
+  container.innerHTML = html;
+}
+
+// ── Distribuzioni mensili
+function renderMensili() {
+  const years = Object.keys(ppByYearMonth).map(Number);
+  const monthStats = MONTHS.map((_,m) => {
+    const vals = years.map(y => ppByYearMonth[y]?.[m] ?? null).filter(v=>v!==null);
+    if (!vals.length) return { mean:0, std:0, min:0, max:0 };
+    const mean = vals.reduce((a,b)=>a+b,0)/vals.length;
+    const std  = Math.sqrt(vals.reduce((a,b)=>a+(b-mean)**2,0)/vals.length);
+    return { mean, std, min: Math.min(...vals), max: Math.max(...vals) };
+  });
+
+  destroyChart('mensili');
+  const ctx = document.getElementById('chartMensili').getContext('2d');
+  charts['mensili'] = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: MONTHS,
+      datasets: [
+        { label: 'Media mensile (mm)', data: monthStats.map(d=>d.mean),
+          backgroundColor: MONTHS.map((_,i) => `hsla(${195+i*15},65%,55%,0.7)`),
+          borderRadius: 4, borderSkipped: false },
+        { label: 'Max storico',   type: 'line', data: monthStats.map(d=>d.max),
+          borderColor:'#ef5350', borderWidth:2, pointRadius:4, fill:false, tension:0.3 },
+        { label: 'Min storico',   type: 'line', data: monthStats.map(d=>d.min),
+          borderColor:'#4caf82', borderWidth:2, pointRadius:4, fill:false, tension:0.3 },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: { y: { title:{display:true,text:'mm',color:'#7a94b8'}, grid:{color:'#1e3050'}, beginAtZero:true }, x:{grid:{color:'#1e3050'}} },
+      plugins: { legend: { labels: { color:'#e3eaf8', usePointStyle:true } },
+                 tooltip: { mode:'index', callbacks: { label: i => `${i.dataset.label}: ${fmt(i.raw,1)} mm` } } }
+    }
+  });
+}
+
+// ── Temperatura mensile
+function renderTempMensili() {
+  if (!Object.keys(tempByDate).length) return;
+  // Calcola media mensile temperatura
+  const tmpByYM = {};
+  for (const [date, t] of Object.entries(tempByDate)) {
+    const [y,m] = date.split('-').map(Number);
+    const key = `${y}-${m}`;
+    if (!tmpByYM[key]) tmpByYM[key] = [];
+    tmpByYM[key].push(t);
+  }
+  const monthTempStats = MONTHS.map((_,m) => {
+    const years = Object.keys(ppByYearMonth).map(Number);
+    const vals = years.flatMap(y => tmpByYM[`${y}-${m+1}`] || []);
+    if (!vals.length) return null;
+    return vals.reduce((a,b)=>a+b,0)/vals.length;
+  });
+
+  destroyChart('tempMensili');
+  const ctx = document.getElementById('chartTempMensili').getContext('2d');
+  charts['tempMensili'] = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: MONTHS,
+      datasets: [{
+        label: 'Temperatura media mensile (°C)',
+        data: monthTempStats,
+        borderColor: '#ffb347', borderWidth: 2.5,
+        backgroundColor: 'rgba(255,179,71,0.12)', fill: true,
+        pointBackgroundColor: '#ffb347', pointRadius: 5, tension: 0.4,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: { y: { title:{display:true,text:'°C',color:'#7a94b8'}, grid:{color:'#1e3050'} }, x:{grid:{color:'#1e3050'}} },
+      plugins: { legend: { labels: { color:'#e3eaf8' } }, tooltip: { callbacks: { label: i => `${fmt(i.raw,1)} °C` } } }
+    }
+  });
+}
+
+// ── Eventi estremi
+function renderEventi() {
+  const thresh = Number(document.getElementById('evtThresh').value);
+  const years = Object.keys(ppByYearMonth).map(Number).sort();
+  const counts = years.map(y => {
+    return Object.entries(ppByDate)
+      .filter(([d,v]) => d.startsWith(String(y)) && v >= thresh).length;
+  });
+
+  destroyChart('eventi');
+  const ctx = document.getElementById('chartEventi').getContext('2d');
+  charts['eventi'] = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: years,
+      datasets: [{ label: `Giorni ≥ ${thresh} mm`,
+        data: counts,
+        backgroundColor: 'rgba(79,195,247,0.6)', borderColor: '#4fc3f7',
+        borderWidth: 2, borderRadius: 5 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: { y: { beginAtZero:true, title:{display:true,text:'N° giorni',color:'#7a94b8'}, grid:{color:'#1e3050'} }, x:{grid:{color:'#1e3050'}} },
+      plugins: { legend: { labels: { color:'#e3eaf8' } } }
+    }
+  });
+}
+
+function renderTopEventi() {
+  const top = Object.entries(ppByDate)
+    .map(([date,mm]) => ({date,mm}))
+    .filter(r => r.mm > 0)
+    .sort((a,b) => b.mm - a.mm)
+    .slice(0, 20);
+
+  const medals = ['🥇','🥈','🥉'];
+  let html = `<table class="data-table">
+    <thead><tr><th>#</th><th>Data</th><th>mm</th></tr></thead><tbody>`;
+  top.forEach((r,i) => {
+    html += `<tr>
+      <td>${medals[i]||i+1}</td>
+      <td>${r.date}</td>
+      <td style="color:${i===0?'#ef5350':i<3?'#ffb347':'var(--text)'}; font-weight:700">${fmt(r.mm,1)}</td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  document.getElementById('topEventiTable').innerHTML = html;
+}
+
+// ── Tabella dati
+function renderTable() {
+  const year = Number(document.getElementById('tblYear').value);
+  const month = Number(document.getElementById('tblMonth').value);
+  const rainOnly = document.getElementById('tblRainOnly').value === '1';
+
+  let rows = Object.entries(ppByDate)
+    .map(([date,mm]) => ({ date, mm }))
+    .filter(r => {
+      const [y,m] = r.date.split('-').map(Number);
+      if (year && y !== year) return false;
+      if (month && m !== month) return false;
+      if (rainOnly && r.mm < 0.1) return false;
+      return true;
+    })
+    .sort((a,b) => b.date.localeCompare(a.date));
+
+  if (!rows.length) { document.getElementById('tblContainer').innerHTML = '<p style="color:var(--muted);padding:12px">Nessun dato per i filtri selezionati.</p>'; return; }
+
+  let html = `<table class="data-table">
+    <thead><tr><th>Data</th><th>Pioggia (mm)</th><th>Fonte</th></tr></thead><tbody>`;
+  rows.forEach(r => {
+    const [y,m,d] = r.date.split('-');
+    const inLive = liveRange && r.date >= liveRange.min && r.date <= liveRange.max;
+    const src = inLive ? '<span style="color:var(--green)">API live</span>' : '<span style="color:var(--orange)">CSV storico</span>';
+    const color = r.mm >= 30 ? 'var(--red)' : r.mm >= 10 ? 'var(--orange)' : r.mm > 0 ? 'var(--accent)' : 'var(--muted)';
+    html += `<tr><td>${r.date}</td><td style="color:${color};font-weight:600">${fmt(r.mm,1)}</td><td>${src}</td></tr>`;
+  });
+  html += '</tbody></table>';
+  document.getElementById('tblContainer').innerHTML = html;
+}
+
+// ── KPI
+function updateKPIs() {
+  const years = Object.keys(ppByYearMonth).map(Number);
+  if (!years.length) return;
+
+  // Ultimo dato
+  if (rawDaily.length) {
+    document.getElementById('kpiLast').textContent = `${fmt(rawDaily[0].mm,1)} mm`;
+    document.getElementById('kpiLastDate').textContent = rawDaily[0].date;
+  }
+  // Anno in corso
+  const currentYearEntries = Object.entries(ppByDate).filter(([d]) => d.startsWith(String(currentYear)));
+  const yearTotal = currentYearEntries.reduce((a,[,v]) => a+v, 0);
+  document.getElementById('kpiYear').textContent = `${fmt(yearTotal,0)} mm`;
+
+  // Media annua
+  const annuals = years.map(y => Object.entries(ppByDate).filter(([d]) => d.startsWith(String(y))).reduce((a,[,v])=>a+v,0));
+  const mean = annuals.reduce((a,b)=>a+b,0)/(annuals.length||1);
+  document.getElementById('kpiMeanYear').textContent = `${fmt(mean,0)} mm`;
+
+  // Max giornaliero
+  const [maxDate, maxMm] = Object.entries(ppByDate).sort(([,a],[,b]) => b-a)[0] || ['—', 0];
+  document.getElementById('kpiMaxDay').textContent = `${fmt(maxMm,1)} mm`;
+  document.getElementById('kpiMaxDayDate').textContent = maxDate;
+
+  // Max mensile
+  let maxMMonth = 0, maxMLabel = '—';
+  for (const [y, months] of Object.entries(ppByYearMonth)) {
+    months.forEach((v,m) => { if(v > maxMMonth) { maxMMonth=v; maxMLabel=`${MONTHS[m]} ${y}`; } });
+  }
+  document.getElementById('kpiMaxMonth').textContent = `${fmt(maxMMonth,0)} mm`;
+  document.getElementById('kpiMaxMonthDate').textContent = maxMLabel;
+
+  // Giorni piovosi medi
+  const wetPerYear = years.map(y => Object.entries(ppByDate).filter(([d,v]) => d.startsWith(String(y)) && v >= 0.1).length);
+  const meanWet = wetPerYear.reduce((a,b)=>a+b,0)/(wetPerYear.length||1);
+  document.getElementById('kpiWetDays').textContent = fmt(meanWet,0);
+}
+
+// ── Source status bar
+function updateSourceBar() {
+  const dotLive = document.getElementById('dotLive');
+  const dotFile = document.getElementById('dotFile');
+  const lblLive = document.getElementById('lblLive');
+  const lblFile = document.getElementById('lblFile');
+
+  if (liveRange) {
+    dotLive.className = 'src-dot live';
+    lblLive.textContent = `${liveRange.min} → ${liveRange.max}`;
+  }
+  if (csvRange) {
+    dotFile.className = 'src-dot file';
+    lblFile.textContent = `${csvRange.min} → ${csvRange.max}`;
+  }
+
+  const all = Object.keys(ppByDate).sort();
+  if (all.length) document.getElementById('lblPeriod').textContent = `${all[0]} → ${all[all.length-1]}`;
+}
+
+// ── Table year selector
+function populateTblYear() {
+  const sel = document.getElementById('tblYear');
+  sel.innerHTML = '<option value="0">Tutti</option>';
+  Object.keys(ppByYearMonth).map(Number).sort((a,b)=>b-a).forEach(y => {
+    const opt = document.createElement('option');
+    opt.value = y; opt.textContent = y; sel.appendChild(opt);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+// RECENT SENSOR GRID (realtime)
+// ═══════════════════════════════════════════════════════════
+async function loadRecentSensors() {
+  const grid = document.getElementById('recentGrid');
+  grid.innerHTML = '';
+
+  for (const [key, sensor] of Object.entries(STATION.sensors)) {
+    const card = document.createElement('div');
+    card.className = 'sensor-card';
+    card.innerHTML = `<div class="sc-header"><div class="sc-name">${sensor.label}</div><div class="sc-unit">${sensor.unit}</div></div>
+      <div class="sc-val" id="sv-${sensor.id}" style="color:${sensor.color}">…</div>
+      <div class="sc-time" id="st-${sensor.id}">caricamento…</div>
+      <canvas class="mini-spark" id="sp-${sensor.id}"></canvas>`;
+    grid.appendChild(card);
+
+    // Async fetch per ogni sensore
+    (async () => {
+      try {
+        const rows = await socrataLastN(sensor.id, 200);
+        if (!rows.length) { document.getElementById(`sv-${sensor.id}`).textContent = 'n/d'; return; }
+        rows.sort((a,b) => (b.data||'').localeCompare(a.data||''));
+        const latest = rows[0];
+        const val = parseFloat(latest.valore ?? 0);
+        document.getElementById(`sv-${sensor.id}`).textContent = `${fmt(val, key==='VV'?1:key==='DV'?0:1)} ${sensor.unit}`;
+        document.getElementById(`st-${sensor.id}`).textContent = (latest.data||'').slice(0,16).replace('T',' ');
+
+        // Mini spark (ultimi 48 punti)
+        const spark = rows.slice(0,48).reverse();
+        const sCtx = document.getElementById(`sp-${sensor.id}`).getContext('2d');
+        new Chart(sCtx, {
+          type: 'line',
+          data: { labels: spark.map(r=>(r.data||'').slice(0,10)),
+            datasets: [{ data: spark.map(r=>parseFloat(r.valore??0)),
+              borderColor: sensor.color, borderWidth: 1.5, pointRadius: 0, fill: false, tension: 0.3 }] },
+          options: { responsive:false, animation:false,
+            scales:{x:{display:false},y:{display:false}},
+            plugins:{legend:{display:false},tooltip:{enabled:false}} }
+        });
+      } catch(e) {
+        document.getElementById(`sv-${sensor.id}`).textContent = 'err';
+        console.warn(sensor.label, e);
+      }
+    })();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// MAIN LOAD
+// ═══════════════════════════════════════════════════════════
+async function loadLiveData() {
+  const detail = document.getElementById('loadingDetail');
+  detail.textContent = 'Scaricamento precipitazioni (API Socrata)…';
+
+  // Scarica gli ultimi 3 anni di dati giornalieri (limite 50000 righe per sicurezza)
+  const rows = await socrataLastN(STATION.sensors.PP.id, 50000);
+  const dateMap = parseSocrataRows(rows, STATION.sensors.PP.id);
+
+  const dates = Object.keys(dateMap).sort();
+  liveRange = dates.length ? { min: dates[0], max: dates[dates.length-1] } : null;
+  mergeIntoStore(dateMap, 'live');
+  rebuildDerivedData();
+
+  // Temperatura (per grafici, non critica)
+  detail.textContent = 'Scaricamento temperatura…';
+  try {
+    const tRows = await socrataLastN(STATION.sensors.T.id, 50000);
+    for (const r of tRows) {
+      const d = (r.data||'').slice(0,10);
+      const v = parseFloat(r.valore??0);
+      if (d && !isNaN(v)) {
+        if (!tempByDate[d]) tempByDate[d] = [];
+        tempByDate[d] = v; // semplificato: prendi ultimo
+      }
+    }
+  } catch(e) { console.warn('Temp fetch failed:', e); }
+}
+
+async function renderAll() {
+  rebuildDerivedData();
+  updateKPIs();
+  updateSourceBar();
+  populateTblYear();
+  buildCumuYearBar();
+  renderCumulate();
+  renderHeatmap();
+  renderMensili();
+  renderTempMensili();
+  renderEventi();
+  renderTopEventi();
+  renderRecent30();
+  renderTempRecent();
+  renderTable();
+}
+
+// ── File upload handler
+document.getElementById('csvInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const status = document.getElementById('uploadStatus');
+  status.textContent = '⏳ Parsing…';
+  try {
+    let dateMap;
+    if (file.name.endsWith('.csv') || file.name.endsWith('.txt')) {
+      const text = await file.text();
+      dateMap = parseCSVArpa(text);
+    } else {
+      const buf = await file.arrayBuffer();
+      dateMap = parseXLSX(new Uint8Array(buf));
+    }
+    const dates = Object.keys(dateMap).sort();
+    if (!dates.length) throw new Error('Nessun dato trovato nel file');
+    csvRange = { min: dates[0], max: dates[dates.length-1] };
+    // CSV is lower priority — only fills gaps not covered by live
+    for (const [date, mm] of Object.entries(dateMap)) {
+      if (ppByDate[date] === undefined) ppByDate[date] = mm;
+    }
+    await renderAll();
+    status.textContent = `✅ ${Object.keys(dateMap).length} giorni caricati (${csvRange.min} → ${csvRange.max})`;
+  } catch(e) {
+    status.textContent = `❌ Errore: ${e.message}`;
+    console.error(e);
+  }
+});
+
+// ── Tab navigation
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('tab-'+tab.dataset.tab).classList.add('active');
+  });
+});
+
+// ── Control listeners
+['cumuNorm','cumuThick'].forEach(id => document.getElementById(id).addEventListener('change', renderCumulate));
+['hmScale','hmValues'].forEach(id => document.getElementById(id).addEventListener('change', renderHeatmap));
+document.getElementById('evtThresh').addEventListener('change', () => { renderEventi(); renderTopEventi(); });
+['tblYear','tblMonth','tblRainOnly'].forEach(id => document.getElementById(id).addEventListener('change', renderTable));
+
+// ═══════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════
+(async () => {
+  const overlay = document.getElementById('loadingOverlay');
+  const detail  = document.getElementById('loadingDetail');
+  try {
+    await loadLiveData();
+    await renderAll();
+    detail.textContent = 'Caricamento sensori recenti…';
+    await loadRecentSensors();
+  } catch(e) {
+    detail.textContent = `❌ ${e.message}`;
+    console.error(e);
+  } finally {
+    overlay.style.display = 'none';
+  }
+})();
+</script>
+</body>
+</html>
