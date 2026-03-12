@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <title>Meteo Mappe — San Pellegrino Terme</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <!-- Leaflet Heat -->
+  <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <!-- SheetJS (XLSX export) -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <style>
+    :root {
+      --bg: #f4f6fb;
+      --card: #fff;
+      --accent: #1d6fa4;
+      --accent2: #2eaab5;
+      --border: #dde3ee;
+      --text: #1a2233;
+      --muted: #6b7a99;
+      --radius: 10px;
+    }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: 'Segoe UI', Arial, sans-serif; background: var(--bg); color: var(--text); line-height: 1.5; }
+    header {
+      background: linear-gradient(135deg, #0f3460 0%, #1d6fa4 60%, #2eaab5 100%);
+      color: #fff; padding: 18px 24px 14px;
+      display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;
+    }
+    header h1 { margin:0; font-size: 1.4rem; font-weight: 700; letter-spacing: 0.02em; }
+    header .nav-link {
+      color: #fff; text-decoration: none; background: rgba(255,255,255,0.18);
+      padding: 6px 16px; border-radius: 20px; font-size: 14px; font-weight: 600;
+      border: 1px solid rgba(255,255,255,0.35); transition: background 0.2s;
+    }
+    header .nav-link:hover { background: rgba(255,255,255,0.32); }
+
+    h2 { text-align: center; margin: 18px 0 8px; font-size: 1.15rem; color: var(--accent); font-weight: 700; }
+    h3 { margin: 16px 0 8px; font-size: 1rem; color: #1a2233; }
+
+    #mapAnnual, #mapAnnualHourly { height: 56vh; width: 100%; border-radius: 0; }
+    .section { padding: 16px 0 20px; background: var(--card); margin-bottom: 12px; border-bottom: 1px solid var(--border); }
+    .controls {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 16px; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+      flex-wrap: wrap; background: #f8fafd;
+    }
+    .controls label { font-weight: 600; font-size: 13px; color: var(--muted); }
+    .controls select, .controls input[type=range] { accent-color: var(--accent); }
+    .date-display { min-width: 110px; font-family: monospace; background: #eaf2fb; padding: 3px 8px; border-radius: 5px; font-size: 13px; }
+    .legend { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #444; }
+    .legend-bar { width: 120px; height: 9px; background: linear-gradient(to right, #0b0f49, #2155b5, #3cc1ff, #7fff7f, #ffd93d, #ff7f27, #c40000); border: 1px solid #bbb; border-radius: 3px; }
+    .legend-labels { display: flex; justify-content: space-between; width: 120px; font-size: 10px; color: #555; }
+    .badge { font-size: 14px; color: #111; text-align: center; margin: 8px 16px; padding: 8px 12px; border: 1px solid #dde3ee; border-radius: 6px; background:#f0f6ff; }
+    .interp-pane { opacity: 0.7; }
+    .label-icon { background: rgba(0,0,0,0.72); color: #fff; padding: 2px 5px; border-radius: 3px; font-size: 11px; white-space: nowrap; }
+    table { border-collapse: collapse; margin: 12px auto; width: 95%; max-width: 1200px; font-size: 13px; }
+    th, td { border: 1px solid #dde3ee; padding: 5px 8px; text-align: center; }
+    th { background: #eaf2fb; color: var(--accent); font-weight: 700; }
+    tr:nth-child(even) td { background: #f7faff; }
+    .note { text-align:center; color:var(--muted); font-size:12px; margin: 4px 0; }
+
+    /* Download section */
+    .download-bar {
+      display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+      padding: 12px 18px; background: #eaf2fb; border-radius: 8px;
+      margin: 10px 16px; border: 1px solid #c5ddf4;
+    }
+    .download-bar label { font-weight: 600; font-size: 13px; color: var(--accent); }
+    .download-bar select { padding: 5px 10px; border-radius: 6px; border: 1px solid #b0c8e0; font-size: 13px; }
+    .btn-dl {
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color: #fff; border: none; padding: 8px 20px; border-radius: 6px;
+      font-size: 13px; font-weight: 700; cursor: pointer;
+      box-shadow: 0 2px 8px rgba(30,112,165,0.25); transition: opacity 0.2s;
+      display: flex; align-items: center; gap: 7px;
+    }
+    .btn-dl:hover { opacity: 0.88; }
+    .btn-dl svg { width:16px; height:16px; }
+    .loading-msg { color: var(--muted); font-size: 12px; font-style: italic; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>🌧 Meteo — San Pellegrino Terme</h1>
+  <a href="analisi_pioggia.html" class="nav-link">📊 Analisi Piovosità →</a>
+</header>
+
+<!-- Annual daily map -->
+<div class="section">
+  <h2>Mappa annuale (anno in corso)</h2>
+  <div id="mapAnnual"></div>
+  <div class="controls">
+    <label for="annualSlider">Giorno:</label>
+    <input id="annualSlider" type="range" min="0" max="0" value="0" step="1" style="width:180px"/>
+    <span id="annualLabel" class="date-display">--</span>
+    <div class="legend">
+      <div>
+        <div class="legend-bar"></div>
+        <div class="legend-labels"><span id="leg0Ann">0</span><span id="leg10Ann">10</span><span id="leg25Ann">25</span><span id="leg50Ann">50+</span></div>
+      </div>
+    </div>
+    <label for="interpMethodAnnual">Metodo:</label>
+    <select id="interpMethodAnnual"><option value="heat">Heatmap</option><option value="voronoi">Voronoi NN</option><option value="idw">IDW</option></select>
+    <label for="idwPowerAnnual">Power:</label>
+    <select id="idwPowerAnnual"><option>1</option><option value="2" selected>2</option><option>3</option></select>
+    <label for="idwRadiusAnnual">Cutoff km:</label>
+    <select id="idwRadiusAnnual"><option>2</option><option value="5" selected>5</option><option>10</option></select>
+    <label for="opacityAnn">Opacità:</label>
+    <input id="opacityAnn" type="range" min="0.3" max="0.9" step="0.1" value="0.7" style="width:70px"/>
+    <label for="scaleAnn">Scala max:</label>
+    <select id="scaleAnn"><option>50</option><option value="60" selected>60</option><option>80</option></select>
+  </div>
+  <div id="annualCumulBadge" class="badge">Cumulata anno in corso (media su stazioni) fino a --: -- mm</div>
+</div>
+
+<!-- Annual hourly map -->
+<div class="section">
+  <h2>Mappa impulsi (finestre mobili 1h–12h, anno in corso)</h2>
+  <div id="mapAnnualHourly"></div>
+  <div class="controls">
+    <label for="annualHourlySlider">Giorno:</label>
+    <input id="annualHourlySlider" type="range" min="0" max="0" value="0" step="1" style="width:180px"/>
+    <span id="annualHourlyLabel" class="date-display">--</span>
+    <label for="windowSel"><b>Finestra:</b></label>
+    <select id="windowSel"><option value="1">1h</option><option value="3">3h</option><option value="6">6h</option><option value="12">12h</option></select>
+    <div class="legend">
+      <div class="legend-bar"></div>
+      <div class="legend-labels"><span id="leg0AnnH">0</span><span id="leg10AnnH">10</span><span id="leg25AnnH">25</span><span id="leg50AnnH">50+</span></div>
+    </div>
+    <label for="interpMethodAnnualH">Metodo:</label>
+    <select id="interpMethodAnnualH"><option value="heat">Heatmap</option><option value="voronoi">Voronoi</option><option value="idw">IDW</option></select>
+    <label for="idwPowerAnnualH">Power:</label>
+    <select id="idwPowerAnnualH"><option>1</option><option value="2" selected>2</option><option>3</option></select>
+    <label for="idwRadiusAnnualH">Cutoff km:</label>
+    <select id="idwRadiusAnnualH"><option>2</option><option value="5" selected>5</option><option>10</option></select>
+    <label for="opacityAnnH">Opacità:</label>
+    <input id="opacityAnnH" type="range" min="0.3" max="0.9" step="0.1" value="0.7" style="width:70px"/>
+    <label for="scaleAnnH">Scala max:</label>
+    <select id="scaleAnnH"><option>10</option><option value="25" selected>25</option><option>50</option></select>
+  </div>
+  <div id="annualHourlyMaxBadge" class="badge">Impulsi giornalieri (media su stazioni) — 1h: -- | 3h: -- | 6h: -- | 12h: --</div>
+  <div class="note">Impulsi = massimo della somma su finestra scorrevole nel giorno selezionato.</div>
+</div>
+
+<!-- DOWNLOAD EXCEL SECTION -->
+<div class="section">
+  <h2>⬇ Download dati Excel</h2>
+  <div class="download-bar">
+    <label for="dlStation">Stazione:</label>
+    <select id="dlStation">
+      <option value="ALL">— Tutte le stazioni —</option>
+    </select>
+    <label for="dlResolution">Cadenza:</label>
+    <select id="dlResolution">
+      <option value="daily">Giornaliera</option>
+      <option value="hourly">Oraria</option>
+    </select>
+    <label for="dlYearStart">Anno da:</label>
+    <select id="dlYearStart"></select>
+    <label for="dlYearEnd">a:</label>
+    <select id="dlYearEnd"></select>
+    <button class="btn-dl" id="btnDownload">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 3v13M7 11l5 5 5-5"/><path d="M5 20h14"/></svg>
+      Scarica Excel
+    </button>
+    <span id="dlStatus" class="loading-msg"></span>
+  </div>
+  <div class="note">I dati vengono scaricati in tempo reale dall'API Open-Meteo e salvati in formato .xlsx. Ogni stazione occupa un foglio separato.</div>
+</div>
+
+<!-- Recap tables -->
+<div class="section">
+  <h2>Tabelle annuali per stazione (2021–2025)</h2>
+  <div class="note">Cumulata totale annua, massimi su finestre 1h–72h, giorni piovosi.</div>
+  <div id="annualRecapTables"></div>
+</div>
+
+<script>
+// ===================== CONFIG & STATIONS =====================
+const locations = {
+  "Sussia": [45.833, 9.633, 988],
+  "Piazzacava": [45.850, 9.657, 450],
+  "Foldone": [45.8491, 9.6161, 1450],
+  "Monte Molinasco": [45.854429482557435, 9.64178530454687, 1176],
+  "San Pellegrino Terme": [45.848687593657786, 9.666033864451745, 372],
+  "Aplecchio": [45.842273445543654, 9.656271242169542, 555],
+  "Vettarola": [45.846151165569296, 9.630560511873826, 980],
+  "Catremerio": [45.822366845838566, 9.633348279863643, 1023],
+  "Cancervo": [45.914712925719755, 9.61825679822863, 1835],
+  "Cerro Brembilla": [45.82506049738162, 9.609529281048879, 740],
+  "Monte Zucco": [45.821586216612964, 9.65600440296724, 1232]
+};
+
+const fmt = (v, d=1) => (Number(v ?? 0)).toFixed(d);
+const isoDate = d => d.toISOString().split('T')[0];
+const today = new Date();
+const startYear = new Date(new Date().getFullYear(), 0, 1);
+const endYear = new Date(today);
+const currentYear = new Date().getFullYear();
+const firstYearRecap = 2021;
+
+// ===================== MAPS =====================
+const center = [45.8487, 9.6660];
+const osmOpts = { maxZoom: 18, attribution: '© OpenStreetMap' };
+const osmUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+
+const mapAnnual = L.map('mapAnnual').setView(center, 13);
+mapAnnual.createPane('interpPane'); mapAnnual.getPane('interpPane').classList.add('interp-pane');
+L.tileLayer(osmUrl, osmOpts).addTo(mapAnnual);
+
+const mapAnnualHourly = L.map('mapAnnualHourly').setView(center, 13);
+mapAnnualHourly.createPane('interpPane'); mapAnnualHourly.getPane('interpPane').classList.add('interp-pane');
+L.tileLayer(osmUrl, osmOpts).addTo(mapAnnualHourly);
+
+const makeLabelIcon = text => L.divIcon({ className: 'label-icon', html: text, iconSize: [60, 14], iconAnchor: [30, -4] });
+
+const stationMarkersAnn = {}, stationLabelsAnn = {};
+const stationMarkersAnnH = {}, stationLabelsAnnH = {};
+for (let name in locations) {
+  const [lat, lon] = locations[name];
+  stationMarkersAnn[name] = L.marker([lat, lon]).addTo(mapAnnual).bindPopup(`${name}`);
+  stationLabelsAnn[name]  = L.marker([lat, lon], { icon: makeLabelIcon('') }).addTo(mapAnnual);
+  stationMarkersAnnH[name] = L.marker([lat, lon]).addTo(mapAnnualHourly).bindPopup(`${name}`);
+  stationLabelsAnnH[name]  = L.marker([lat, lon], { icon: makeLabelIcon('') }).addTo(mapAnnualHourly);
+}
+
+const bounds = (() => {
+  const lls = Object.values(locations).map(([la,lo]) => L.latLng(la, lo));
+  return L.latLngBounds(lls).pad(0.08);
+})();
+
+// ===================== DATA FETCH =====================
+async function fetchHistoric(lat, lon, start, end) {
+  const url = `https://historical-forecast-api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
+    `&start_date=${start}&end_date=${end}&daily=precipitation_sum&hourly=precipitation&timezone=Europe/Rome`;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+
+async function fetchYear(lat, lon, year) {
+  const start = `${year}-01-01`;
+  const end = (year === currentYear) ? isoDate(new Date()) : `${year}-12-31`;
+  return fetchHistoric(lat, lon, start, end);
+}
+
+// ===================== INTERPOLATION HELPERS =====================
+const GRID_STEP = 0.0009;
+const normalize = (val, maxVal) => Math.max(0, Math.min(1, maxVal ? (val/maxVal) : 0));
+const heatPoints = (points, maxVal) => points.map(p => [p.lat, p.lon, normalize(p.val, maxVal)]);
+function voronoiNNGrid(points, bounds, gridStep=GRID_STEP, maxVal=60) {
+  const heatPts=[], minLat=bounds.getSouth(), maxLat=bounds.getNorth();
+  const minLon=bounds.getWest(), maxLon=bounds.getEast();
+  for (let lat=minLat; lat<=maxLat; lat+=gridStep)
+    for (let lon=minLon; lon<=maxLon; lon+=gridStep) {
+      let bV=0, bD=Infinity;
+      for (const p of points) { const d=(p.lat-lat)**2+(p.lon-lon)**2; if(d<bD){bD=d;bV=p.val;} }
+      heatPts.push([lat, lon, normalize(bV, maxVal)]);
+    }
+  return heatPts;
+}
+function idwCutoffGrid(points, bounds, gridStep=GRID_STEP, power=2, radiusKm=5, maxVal=60) {
+  const heatPts=[], minLat=bounds.getSouth(), maxLat=bounds.getNorth();
+  const minLon=bounds.getWest(), maxLon=bounds.getEast();
+  const dLat=1/111.32, dLon=d=>1/(111.32*Math.cos(d*Math.PI/180));
+  for (let lat=minLat; lat<=maxLat; lat+=gridStep) {
+    const dl=dLon(lat);
+    for (let lon=minLon; lon<=maxLon; lon+=gridStep) {
+      let num=0, den=0;
+      for (const p of points) {
+        const dk=Math.sqrt(((p.lat-lat)/dLat)**2+((p.lon-lon)/dl)**2);
+        if(dk<=radiusKm){const w=dk===0?1e9:1/dk**power; num+=w*p.val; den+=w;}
+      }
+      heatPts.push([lat, lon, normalize(den?num/den:0, maxVal)]);
+    }
+  }
+  return heatPts;
+}
+function renderHeat(map, layerVar, points, method, power, radiusKm, maxScale, opacity) {
+  if(layerVar) map.removeLayer(layerVar);
+  map.getPane('interpPane').style.opacity = opacity;
+  let hd;
+  if(method==='heat') hd=heatPoints(points, maxScale);
+  else if(method==='voronoi') hd=voronoiNNGrid(points, bounds, GRID_STEP, maxScale);
+  else hd=idwCutoffGrid(points, bounds, GRID_STEP, Number(power), Number(radiusKm), maxScale);
+  return L.heatLayer(hd, {
+    pane:'interpPane', radius:35, blur:25, maxZoom:13,
+    gradient:{0.0:'#0b0f49',0.2:'#2155b5',0.4:'#3cc1ff',0.6:'#7fff7f',0.8:'#ffd93d',1.0:'#c40000'}
+  }).addTo(map);
+}
+
+function rollingMax(arr, w) {
+  let max=0, sum=0, q=[];
+  for(let v of arr){v=Number(v||0);q.push(v);sum+=v;if(q.length>w)sum-=q.shift();if(q.length===w)max=Math.max(max,sum);}
+  return max;
+}
+function isUniformPositiveEqual(points, eps=1e-6) {
+  if(!points?.length) return false;
+  const v0=points[0].val; if(v0<=0) return false;
+  for(const p of points) if(p.val<=0||Math.abs(p.val-v0)>eps) return false;
+  return true;
+}
+function convexHullLatLon(points) {
+  const pts=points.map(p=>({x:p.lon,y:p.lat}));
+  pts.sort((a,b)=>a.x===b.x?a.y-b.y:a.x-b.x);
+  const cross=(o,a,b)=>(a.x-o.x)*(b.y-o.y)-(a.y-o.y)*(b.x-o.x);
+  const lower=[]; for(const p of pts){while(lower.length>=2&&cross(lower[lower.length-2],lower[lower.length-1],p)<=0)lower.pop();lower.push(p);}
+  const upper=[]; for(let i=pts.length-1;i>=0;i--){const p=pts[i];while(upper.length>=2&&cross(upper[upper.length-2],upper[upper.length-1],p)<=0)upper.pop();upper.push(p);}
+  upper.pop();lower.pop();
+  return lower.concat(upper).map(p=>[p.y,p.x]);
+}
+function drawHull(map, points, existing) {
+  if(existing) map.removeLayer(existing);
+  const hull=convexHullLatLon(points);
+  return hull.length>=3?L.polygon(hull,{color:'#c40000',weight:2,fillOpacity:0,pane:'interpPane'}).addTo(map):null;
+}
+
+// ===================== DATA CONTAINERS =====================
+const seriesYearDaily={};
+const hourlyByStation={};
+let annualDates=[], dayListFromHourly=[];
+let interpLayerAnnual=null, hullAnn=null;
+let interpLayerAnnualH=null, hullAnnH=null;
+
+// ===================== LOAD YEAR DATA =====================
+async function loadAnnualYear() {
+  for(let name in locations){
+    const [lat,lon,z]=locations[name];
+    const data=await fetchHistoric(lat,lon,isoDate(startYear),isoDate(endYear));
+    const dTimes=data?.daily?.time||[], dSum=data?.daily?.precipitation_sum||[];
+    for(let i=0;i<dTimes.length;i++){
+      const d=dTimes[i], v=Number(dSum[i]??0);
+      seriesYearDaily[d]=seriesYearDaily[d]||[];
+      seriesYearDaily[d].push({lat,lon,z,val:v});
+    }
+    const hTimes=data?.hourly?.time||[], hVals=data?.hourly?.precipitation||[];
+    hourlyByStation[name]=hourlyByStation[name]||{};
+    for(let i=0;i<hTimes.length;i++) hourlyByStation[name][hTimes[i]]=Number(hVals[i]??0);
+  }
+  annualDates=Object.keys(seriesYearDaily).sort();
+  const setDays=new Set();
+  for(let st in hourlyByStation) Object.keys(hourlyByStation[st]).forEach(ts=>setDays.add(ts.split('T')[0]));
+  dayListFromHourly=Array.from(setDays).sort();
+
+  const annualSlider=document.getElementById('annualSlider');
+  const annualHourlySlider=document.getElementById('annualHourlySlider');
+  annualSlider.min=0; annualSlider.max=Math.max(0,annualDates.length-1); annualSlider.value=annualSlider.max;
+  annualHourlySlider.min=0; annualHourlySlider.max=Math.max(0,dayListFromHourly.length-1); annualHourlySlider.value=annualHourlySlider.max;
+
+  setLegend(Number(document.getElementById('scaleAnn').value),['leg0Ann','leg10Ann','leg25Ann','leg50Ann']);
+  setLegendHourly();
+  updateAnnual(Number(annualSlider.value));
+  updateAnnualH(Number(annualHourlySlider.value));
+
+  annualSlider.addEventListener('input',()=>updateAnnual(Number(annualSlider.value)));
+  ['interpMethodAnnual','idwPowerAnnual','idwRadiusAnnual','opacityAnn','scaleAnn'].forEach(id=>{
+    document.getElementById(id).addEventListener('change',()=>updateAnnual(Number(annualSlider.value)));
+  });
+  annualHourlySlider.addEventListener('input',()=>updateAnnualH(Number(annualHourlySlider.value)));
+  ['interpMethodAnnualH','idwPowerAnnualH','idwRadiusAnnualH','opacityAnnH','scaleAnnH','windowSel'].forEach(id=>{
+    document.getElementById(id).addEventListener('change',()=>updateAnnualH(Number(annualHourlySlider.value)));
+  });
+}
+
+function setLegend(scale, ids) {
+  const s=Number(scale);
+  document.getElementById(ids[0]).textContent='0';
+  document.getElementById(ids[1]).textContent=`${Math.round(s*0.166)}`;
+  document.getElementById(ids[2]).textContent=`${Math.round(s*0.416)}`;
+  document.getElementById(ids[3]).textContent=`${Math.round(s*0.833)}+`;
+}
+function setLegendHourly() {
+  const s=Number(document.getElementById('scaleAnnH').value);
+  document.getElementById('leg0AnnH').textContent='0';
+  document.getElementById('leg10AnnH').textContent=`${Math.min(10,s)}`;
+  document.getElementById('leg25AnnH').textContent=`${Math.min(25,s)}`;
+  document.getElementById('leg50AnnH').textContent=`${s}+`;
+}
+
+function updateAnnual(idx) {
+  const date=annualDates[idx];
+  document.getElementById('annualLabel').textContent=date??'--';
+  const points=seriesYearDaily[date]||[];
+  let cum=0;
+  for(let d of annualDates){
+    if(d<=date){const vals=(seriesYearDaily[d]||[]).map(p=>p.val);if(vals.length)cum+=vals.reduce((a,b)=>a+b,0)/vals.length;}
+  }
+  document.getElementById('annualCumulBadge').textContent=`Cumulata anno in corso (media su stazioni) fino a ${date}: ${fmt(cum,1)} mm`;
+  const method=document.getElementById('interpMethodAnnual').value;
+  const power=document.getElementById('idwPowerAnnual').value;
+  const radius=document.getElementById('idwRadiusAnnual').value;
+  const opacity=document.getElementById('opacityAnn').value;
+  const scale=Number(document.getElementById('scaleAnn').value);
+  setLegend(scale,['leg0Ann','leg10Ann','leg25Ann','leg50Ann']);
+  const uniform=isUniformPositiveEqual(points);
+  if(uniform){if(interpLayerAnnual)mapAnnual.removeLayer(interpLayerAnnual);hullAnn=drawHull(mapAnnual,points,hullAnn);}
+  else{if(hullAnn){mapAnnual.removeLayer(hullAnn);hullAnn=null;}interpLayerAnnual=renderHeat(mapAnnual,interpLayerAnnual,points,method,power,radius,scale,opacity);}
+  const perStation={};
+  points.forEach(p=>perStation[`${p.lat},${p.lon}`]=p.val);
+  for(let name in stationMarkersAnn){
+    const [lat,lon]=locations[name];
+    const v=perStation[`${lat},${lon}`]??null;
+    const txt=v===null?'':`${fmt(v,1)} mm`;
+    stationMarkersAnn[name].setPopupContent(`${name}<br/>Giorno ${date}: ${txt||'--'}`);
+    stationLabelsAnn[name].setIcon(makeLabelIcon(v&&v>0?txt:''));
+  }
+}
+
+function getHourlySeriesForDay(station,date){
+  const series=hourlyByStation[station]||{};
+  const hours=Object.keys(series).filter(ts=>ts.split('T')[0]===date).sort();
+  return hours.map(ts=>Number(series[ts]??0));
+}
+function updateAnnualH(idx){
+  const date=dayListFromHourly[idx];
+  document.getElementById('annualHourlyLabel').textContent=date??'--';
+  const maxPerStation={};
+  let avg1=0,avg3=0,avg6=0,avg12=0,count=0;
+  const windowSel=Number(document.getElementById('windowSel').value);
+  const impulsePoints=[];
+  for(let name in locations){
+    const [lat,lon,z]=locations[name];
+    const series=getHourlySeriesForDay(name,date);
+    if(!series.length){impulsePoints.push({lat,lon,val:0,z});continue;}
+    const m1=rollingMax(series,1),m3=rollingMax(series,3),m6=rollingMax(series,6),m12=rollingMax(series,12);
+    avg1+=m1;avg3+=m3;avg6+=m6;avg12+=m12;count++;
+    let selVal=(windowSel===1?m1:windowSel===3?m3:windowSel===6?m6:m12);
+    maxPerStation[name]=selVal;
+    impulsePoints.push({lat,lon,z,val:selVal});
+  }
+  document.getElementById('annualHourlyMaxBadge').textContent=
+    `Impulsi giornalieri (media su stazioni) — 1h: ${fmt(count?avg1/count:0,1)} | 3h: ${fmt(count?avg3/count:0,1)} | 6h: ${fmt(count?avg6/count:0,1)} | 12h: ${fmt(count?avg12/count:0,1)}`;
+  const method=document.getElementById('interpMethodAnnualH').value;
+  const power=document.getElementById('idwPowerAnnualH').value;
+  const radius=document.getElementById('idwRadiusAnnualH').value;
+  const opacity=document.getElementById('opacityAnnH').value;
+  const scale=Number(document.getElementById('scaleAnnH').value);
+  setLegendHourly();
+  const uniform=isUniformPositiveEqual(impulsePoints);
+  if(uniform){if(interpLayerAnnualH)mapAnnualHourly.removeLayer(interpLayerAnnualH);hullAnnH=drawHull(mapAnnualHourly,impulsePoints,hullAnnH);}
+  else{if(hullAnnH){mapAnnualHourly.removeLayer(hullAnnH);hullAnnH=null;}interpLayerAnnualH=renderHeat(mapAnnualHourly,interpLayerAnnualH,impulsePoints,method,power,radius,scale,opacity);}
+  for(let name in stationMarkersAnnH){
+    const v=maxPerStation[name]??0;
+    stationMarkersAnnH[name].setPopupContent(`${name}<br/>${windowSel}h: ${fmt(v,1)} mm`);
+    stationLabelsAnnH[name].setIcon(makeLabelIcon(v>0?`${fmt(v,1)} mm`:''));
+  }
+}
+
+// ===================== DOWNLOAD EXCEL =====================
+function setupDownloadUI() {
+  const stationSel = document.getElementById('dlStation');
+  Object.keys(locations).forEach(n => {
+    const opt = document.createElement('option');
+    opt.value = n; opt.textContent = n;
+    stationSel.appendChild(opt);
+  });
+  const yearStartSel = document.getElementById('dlYearStart');
+  const yearEndSel = document.getElementById('dlYearEnd');
+  for(let y = firstYearRecap; y <= currentYear; y++) {
+    [yearStartSel, yearEndSel].forEach(sel => {
+      const opt = document.createElement('option');
+      opt.value = y; opt.textContent = y;
+      sel.appendChild(opt);
+    });
+  }
+  yearStartSel.value = firstYearRecap;
+  yearEndSel.value = currentYear;
+  document.getElementById('btnDownload').addEventListener('click', downloadExcel);
+}
+
+async function downloadExcel() {
+  const stationSel = document.getElementById('dlStation').value;
+  const resolution = document.getElementById('dlResolution').value;
+  const yearFrom = Number(document.getElementById('dlYearStart').value);
+  const yearTo = Number(document.getElementById('dlYearEnd').value);
+  const statusEl = document.getElementById('dlStatus');
+
+  if(yearFrom > yearTo) { statusEl.textContent = '⚠ Anno inizio > anno fine'; return; }
+
+  const stationsToFetch = stationSel === 'ALL' ? Object.keys(locations) : [stationSel];
+  statusEl.textContent = `⏳ Download in corso (${stationsToFetch.length} staz × ${yearTo-yearFrom+1} anni)…`;
+
+  const wb = XLSX.utils.book_new();
+
+  for (const name of stationsToFetch) {
+    const [lat, lon] = locations[name];
+    const allRows = [];
+
+    for(let y = yearFrom; y <= yearTo; y++) {
+      const start = `${y}-01-01`;
+      const end = (y === currentYear) ? isoDate(new Date()) : `${y}-12-31`;
+      let data;
+      try { data = await fetchHistoric(lat, lon, start, end); }
+      catch(e) { console.warn('Fetch error', name, y, e); continue; }
+
+      if(resolution === 'daily') {
+        const times = data?.daily?.time || [];
+        const sums  = data?.daily?.precipitation_sum || [];
+        for(let i=0;i<times.length;i++) {
+          allRows.push({ Data: times[i], Anno: y, 'Pioggia (mm)': Number(sums[i]??0) });
+        }
+      } else {
+        const times = data?.hourly?.time || [];
+        const vals  = data?.hourly?.precipitation || [];
+        for(let i=0;i<times.length;i++) {
+          const ts = times[i];
+          const datePart = ts.split('T')[0];
+          const hour = ts.split('T')[1]?.slice(0,5) ?? '';
+          allRows.push({ Timestamp: ts, Data: datePart, Ora: hour, Anno: y, 'Pioggia (mm)': Number(vals[i]??0) });
+        }
+      }
+    }
+
+    // Shorten sheet name (Excel max 31 chars)
+    const sheetName = name.slice(0, 31);
+    const ws = XLSX.utils.json_to_sheet(allRows);
+    // Auto column widths
+    const cols = Object.keys(allRows[0]||{}).map(k => ({ wch: Math.max(k.length, 12) }));
+    ws['!cols'] = cols;
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  }
+
+  const suffix = stationSel === 'ALL' ? 'tutte_stazioni' : stationSel.replace(/\s+/g,'_');
+  const filename = `meteo_${suffix}_${resolution}_${yearFrom}-${yearTo}.xlsx`;
+  XLSX.writeFile(wb, filename);
+  statusEl.textContent = `✅ File scaricato: ${filename}`;
+  setTimeout(()=>statusEl.textContent='', 5000);
+}
+
+// ===================== RECAP TABLES =====================
+async function buildAnnualRecapTables() {
+  const container = document.getElementById('annualRecapTables');
+  container.innerHTML='';
+  const years=Array.from({length:(currentYear-firstYearRecap+1)},(_,i)=>firstYearRecap+i);
+  for(let name in locations){
+    const [lat,lon]=locations[name];
+    let html=`<h3>${name} <span style="font-size:12px;color:#999">Lat ${lat.toFixed(4)} | Lon ${lon.toFixed(4)} | ${locations[name][2]} m</span></h3>
+    <table><thead><tr><th>Anno</th><th>Totale (mm)</th><th>Max 1h</th><th>Max 3h</th><th>Max 6h</th><th>Max 12h</th><th>Max 24h</th><th>Max 48h</th><th>Max 72h</th><th>Giorni piovosi</th></tr></thead><tbody>`;
+    for(const y of years){
+      let data; try{data=await fetchYear(lat,lon,y);}catch(e){continue;}
+      const dTimes=data?.daily?.time||[], dSum=data?.daily?.precipitation_sum||[];
+      const hVals=data?.hourly?.precipitation||[];
+      if(!dTimes.length) continue;
+      const total=dSum.reduce((a,b)=>a+Number(b||0),0);
+      const wetDays=dSum.filter(v=>Number(v||0)>=0.1).length;
+      html+=`<tr><td><b>${y}</b></td><td>${fmt(total,1)}</td>
+        <td>${fmt(rollingMax(hVals,1),1)}</td><td>${fmt(rollingMax(hVals,3),1)}</td>
+        <td>${fmt(rollingMax(hVals,6),1)}</td><td>${fmt(rollingMax(hVals,12),1)}</td>
+        <td>${fmt(rollingMax(hVals,24),1)}</td><td>${fmt(rollingMax(hVals,48),1)}</td>
+        <td>${fmt(rollingMax(hVals,72),1)}</td><td>${wetDays}</td></tr>`;
+    }
+    html+=`</tbody></table>`;
+    container.insertAdjacentHTML('beforeend', html);
+  }
+}
+
+// ===================== INIT =====================
+setupDownloadUI();
+(async()=>{
+  try {
+    await loadAnnualYear();
+    await buildAnnualRecapTables();
+  } catch(e) {
+    console.error('Errore generale:',e);
+    document.getElementById('annualCumulBadge').textContent='Errore caricamento dati.';
+  }
+})();
+</script>
+</body>
+</html>

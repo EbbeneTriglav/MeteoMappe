@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8"/>
+  <title>Analisi Piovosità — San Pellegrino Terme</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+  <style>
+    :root {
+      --bg: #0e1623;
+      --card: #131e2e;
+      --card2: #17253a;
+      --accent: #2eaab5;
+      --accent2: #3ed6a0;
+      --border: #1e2f47;
+      --text: #e8eef8;
+      --muted: #8096b4;
+      --radius: 12px;
+    }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body { font-family:'Segoe UI',Arial,sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }
+
+    header {
+      background: linear-gradient(135deg, #0a1628 0%, #0f3460 60%, #1d6fa4 100%);
+      padding: 16px 28px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;
+      border-bottom: 1px solid var(--border);
+    }
+    header h1 { font-size:1.35rem; font-weight:800; letter-spacing:0.03em; color:#fff; }
+    .nav-link {
+      color:#b0d4f0; text-decoration:none; font-size:13px; font-weight:600;
+      border:1px solid rgba(255,255,255,0.2); padding:6px 16px; border-radius:20px;
+      background:rgba(255,255,255,0.08); transition:background 0.2s;
+    }
+    .nav-link:hover{background:rgba(255,255,255,0.15);}
+
+    .loading-overlay {
+      position:fixed; inset:0; background:rgba(14,22,35,0.92); z-index:999;
+      display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px;
+    }
+    .spinner {
+      width:52px; height:52px; border:5px solid var(--border); border-top-color:var(--accent);
+      border-radius:50%; animation:spin 0.9s linear infinite;
+    }
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .loading-overlay p { color:var(--muted); font-size:15px; }
+    #loadingDetail { color:var(--accent); font-size:13px; }
+
+    .main { max-width:1400px; margin:0 auto; padding:24px 20px 48px; }
+
+    /* TABS */
+    .tabs { display:flex; gap:4px; margin-bottom:24px; border-bottom:2px solid var(--border); }
+    .tab {
+      padding:10px 22px; font-size:14px; font-weight:700; cursor:pointer; border-radius:8px 8px 0 0;
+      color:var(--muted); background:transparent; border:none; transition:all 0.2s; letter-spacing:0.01em;
+    }
+    .tab:hover { color:var(--text); background:var(--card); }
+    .tab.active { color:var(--accent); background:var(--card); border-bottom:2px solid var(--accent); }
+    .tab-panel { display:none; }
+    .tab-panel.active { display:block; }
+
+    /* CARDS */
+    .card {
+      background:var(--card); border:1px solid var(--border); border-radius:var(--radius);
+      padding:22px 24px; margin-bottom:22px;
+    }
+    .card-title { font-size:1rem; font-weight:700; color:var(--accent); margin-bottom:14px; display:flex; align-items:center; gap:8px; }
+    .card-title span { font-size:1.2em; }
+
+    /* CONTROLS */
+    .controls-row { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:16px; }
+    .controls-row label { font-size:12px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.05em; }
+    select, input[type=checkbox] { accent-color:var(--accent); }
+    select {
+      background:var(--card2); color:var(--text); border:1px solid var(--border);
+      padding:6px 12px; border-radius:6px; font-size:13px; cursor:pointer;
+    }
+    select:focus { outline:1px solid var(--accent); }
+    .btn {
+      background:var(--accent); color:#0e1623; border:none; padding:7px 18px;
+      border-radius:6px; font-size:13px; font-weight:700; cursor:pointer; transition:opacity 0.2s;
+    }
+    .btn:hover{opacity:0.82;}
+    .btn-outline {
+      background:transparent; color:var(--accent); border:1px solid var(--accent);
+      padding:6px 16px; border-radius:6px; font-size:13px; font-weight:700; cursor:pointer; transition:all 0.2s;
+    }
+    .btn-outline:hover{background:var(--accent);color:#0e1623;}
+
+    /* CHART CONTAINERS */
+    .chart-wrap { position:relative; width:100%; }
+    .chart-wrap canvas { width:100% !important; }
+
+    /* STATION TOGGLE CHIPS */
+    .chip-bar { display:flex; flex-wrap:wrap; gap:7px; margin-bottom:14px; }
+    .chip {
+      padding:4px 13px; border-radius:20px; font-size:12px; font-weight:700; cursor:pointer;
+      border:2px solid transparent; transition:all 0.15s; user-select:none;
+      opacity:0.45; color:#fff;
+    }
+    .chip.active { opacity:1; }
+
+    /* HEATMAP grid */
+    .heatmap-container { overflow-x:auto; }
+    .heatmap-grid {
+      display:grid; gap:3px; width:fit-content; margin:0 auto;
+    }
+    .hm-cell {
+      width:52px; height:36px; border-radius:5px; display:flex; align-items:center; justify-content:center;
+      font-size:11px; font-weight:700; cursor:default; transition:transform 0.1s;
+      color:#fff; text-shadow:0 1px 2px rgba(0,0,0,0.6);
+    }
+    .hm-cell:hover { transform:scale(1.12); z-index:10; position:relative; }
+    .hm-label-row { display:flex; gap:3px; margin-bottom:3px; }
+    .hm-label { width:52px; text-align:center; font-size:11px; color:var(--muted); font-weight:700; }
+    .hm-year-label { width:46px; text-align:right; font-size:11px; color:var(--muted); font-weight:700; padding-right:4px; display:flex; align-items:center; justify-content:flex-end; }
+
+    /* STATS GRID */
+    .stats-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; }
+    .stat-card {
+      background:var(--card2); border-radius:8px; padding:14px 16px; border:1px solid var(--border);
+    }
+    .stat-label { font-size:11px; color:var(--muted); font-weight:700; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:4px; }
+    .stat-value { font-size:1.6rem; font-weight:800; color:var(--accent); }
+    .stat-sub { font-size:11px; color:var(--muted); margin-top:2px; }
+
+    /* LEGEND SCALE */
+    .scale-bar { display:flex; align-items:center; gap:10px; margin-top:10px; }
+    .scale-gradient { height:12px; width:220px; border-radius:4px; }
+    .scale-labels { display:flex; justify-content:space-between; width:220px; font-size:10px; color:var(--muted); margin-top:3px; }
+
+    /* YEAR CHECKBOXES */
+    .year-toggle-bar { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px; }
+    .year-btn {
+      padding:4px 12px; border-radius:14px; font-size:12px; font-weight:700; cursor:pointer;
+      background:var(--card2); color:var(--muted); border:1px solid var(--border); transition:all 0.15s;
+    }
+    .year-btn.on { background:var(--accent); color:#0e1623; border-color:var(--accent); }
+
+    .info-note { font-size:12px; color:var(--muted); margin-top:8px; }
+  </style>
+</head>
+<body>
+
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="spinner"></div>
+  <p>Caricamento dati in corso…</p>
+  <p id="loadingDetail">Inizializzazione</p>
+</div>
+
+<header>
+  <h1>📊 Analisi Piovosità — San Pellegrino Terme</h1>
+  <a href="index_v6.html" class="nav-link">← Mappa Meteo</a>
+</header>
+
+<div class="main">
+  <div class="tabs">
+    <button class="tab active" data-tab="cumulate">📈 Curve Cumulate</button>
+    <button class="tab" data-tab="heatmap">🟦 Heatmap Mensile</button>
+    <button class="tab" data-tab="mensili">📅 Distribuzioni Mensili</button>
+    <button class="tab" data-tab="eventi">⛈ Eventi Estremi</button>
+    <button class="tab" data-tab="confronto">🔀 Confronto Stazioni</button>
+  </div>
+
+  <!-- ===== TAB: CURVE CUMULATE ===== -->
+  <div class="tab-panel active" id="tab-cumulate">
+    <div class="card">
+      <div class="card-title"><span>📈</span> Curve cumulate annuali per stazione</div>
+      <div class="controls-row">
+        <label>Stazione:</label>
+        <select id="cumuStation"></select>
+        <label>Normalizza:</label>
+        <select id="cumuNorm">
+          <option value="0">mm assoluti</option>
+          <option value="1">% del totale annuo</option>
+        </select>
+        <label>Spessore linee:</label>
+        <select id="cumuThick"><option value="1.5">Sottile</option><option value="2.5" selected>Normale</option><option value="4">Spesso</option></select>
+      </div>
+      <div class="year-toggle-bar" id="cumuYearToggle"></div>
+      <div class="chip-bar" style="display:none" id="cumuChipBar"></div>
+      <div class="chart-wrap" style="height:420px"><canvas id="chartCumulate"></canvas></div>
+      <p class="info-note">Le curve mostrano la pioggia cumulata progressiva giorno per giorno (1 gen → 31 dic). Anni diversi sovrapposti per confronto stagionale.</p>
+    </div>
+  </div>
+
+  <!-- ===== TAB: HEATMAP MENSILE ===== -->
+  <div class="tab-panel" id="tab-heatmap">
+    <div class="card">
+      <div class="card-title"><span>🟦</span> Heatmap pioggia mensile (mm) — Asse X: mesi, Asse Y: anni</div>
+      <div class="controls-row">
+        <label>Stazione:</label>
+        <select id="hmStation"></select>
+        <label>Scala colori:</label>
+        <select id="hmScale">
+          <option value="auto">Automatica</option>
+          <option value="200">0–200 mm</option>
+          <option value="300">0–300 mm</option>
+          <option value="400">0–400 mm</option>
+        </select>
+        <label>Mostra valori:</label>
+        <select id="hmShowVal"><option value="1">Sì</option><option value="0">No</option></select>
+      </div>
+      <div class="heatmap-container" id="hmContainer"></div>
+      <div class="scale-bar">
+        <span style="font-size:11px;color:var(--muted)">0</span>
+        <div class="scale-gradient" id="scaleGradient" style="background:linear-gradient(to right,#0b1a6b,#1d6fa4,#2eaab5,#3ed6a0,#ffe066,#ff7f27,#c40000)"></div>
+        <span style="font-size:11px;color:var(--muted)" id="scaleMax">max</span>
+      </div>
+      <p class="info-note">Ogni cella mostra i mm di pioggia per quel mese/anno. Hover per il valore esatto.</p>
+    </div>
+  </div>
+
+  <!-- ===== TAB: DISTRIBUZIONI MENSILI ===== -->
+  <div class="tab-panel" id="tab-mensili">
+    <div class="card">
+      <div class="card-title"><span>📅</span> Distribuzione mensile media e variabilità</div>
+      <div class="controls-row">
+        <label>Stazione:</label>
+        <select id="mensStation"></select>
+        <label>Tipo:</label>
+        <select id="mensType">
+          <option value="bar">Barre (media ± deviazione standard)</option>
+          <option value="boxlike">Media/Min/Max per mese</option>
+        </select>
+      </div>
+      <div class="chart-wrap" style="height:380px"><canvas id="chartMensili"></canvas></div>
+      <p class="info-note">Media mensile calcolata su tutti gli anni disponibili (2021–anno corrente). Le barre di errore mostrano ±1σ.</p>
+    </div>
+    <div class="card">
+      <div class="card-title"><span>📊</span> Statistiche annuali per stazione</div>
+      <div class="controls-row">
+        <label>Stazione:</label>
+        <select id="statsStation"></select>
+      </div>
+      <div class="stats-grid" id="statsGrid"></div>
+    </div>
+  </div>
+
+  <!-- ===== TAB: EVENTI ESTREMI ===== -->
+  <div class="tab-panel" id="tab-eventi">
+    <div class="card">
+      <div class="card-title"><span>⛈</span> Giorni con pioggia intensa (soglia mm/giorno)</div>
+      <div class="controls-row">
+        <label>Stazione:</label>
+        <select id="evtStation"></select>
+        <label>Soglia (mm/gg):</label>
+        <select id="evtThresh">
+          <option value="10">10 mm</option>
+          <option value="20" selected>20 mm</option>
+          <option value="30">30 mm</option>
+          <option value="50">50 mm</option>
+          <option value="100">100 mm</option>
+        </select>
+      </div>
+      <div class="chart-wrap" style="height:320px"><canvas id="chartEventi"></canvas></div>
+      <p class="info-note">Numero di giorni nell'anno con precipitazione superiore alla soglia scelta.</p>
+    </div>
+    <div class="card">
+      <div class="card-title"><span>🏆</span> Top-10 giorni più piovosi (tutte le stazioni)</div>
+      <div class="controls-row">
+        <label>Stazione:</label>
+        <select id="topStation"></select>
+      </div>
+      <div id="topTable"></div>
+    </div>
+  </div>
+
+  <!-- ===== TAB: CONFRONTO STAZIONI ===== -->
+  <div class="tab-panel" id="tab-confronto">
+    <div class="card">
+      <div class="card-title"><span>🔀</span> Confronto cumulata annua tra stazioni</div>
+      <div class="controls-row">
+        <label>Anno:</label>
+        <select id="confAnno"></select>
+        <label>Metrica:</label>
+        <select id="confMetric">
+          <option value="total">Totale annuo (mm)</option>
+          <option value="wetdays">Giorni piovosi</option>
+          <option value="max24">Massimo 24h</option>
+        </select>
+      </div>
+      <div class="chip-bar" id="confChipBar"></div>
+      <div class="chart-wrap" style="height:360px"><canvas id="chartConfronto"></canvas></div>
+      <p class="info-note">Confronto tra le stazioni per l'anno e la metrica selezionati. Seleziona/deseleziona stazioni con i chip sopra.</p>
+    </div>
+    <div class="card">
+      <div class="card-title"><span>📉</span> Trend multi-anno — totale annuo per stazione</div>
+      <div class="chip-bar" id="trendChipBar"></div>
+      <div class="chart-wrap" style="height:360px"><canvas id="chartTrend"></canvas></div>
+      <p class="info-note">Andamento del totale annuo per le stazioni selezionate dal 2021 all'anno corrente.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== CONFIG =====
+const locations = {
+  "Sussia": [45.833, 9.633, 988],
+  "Piazzacava": [45.850, 9.657, 450],
+  "Foldone": [45.8491, 9.6161, 1450],
+  "Monte Molinasco": [45.854429482557435, 9.64178530454687, 1176],
+  "San Pellegrino Terme": [45.848687593657786, 9.666033864451745, 372],
+  "Aplecchio": [45.842273445543654, 9.656271242169542, 555],
+  "Vettarola": [45.846151165569296, 9.630560511873826, 980],
+  "Catremerio": [45.822366845838566, 9.633348279863643, 1023],
+  "Cancervo": [45.914712925719755, 9.61825679822863, 1835],
+  "Cerro Brembilla": [45.82506049738162, 9.609529281048879, 740],
+  "Monte Zucco": [45.821586216612964, 9.65600440296724, 1232]
+};
+const stationNames = Object.keys(locations);
+const currentYear = new Date().getFullYear();
+const firstYear = 2021;
+const years = Array.from({length: currentYear - firstYear + 1}, (_,i) => firstYear + i);
+const monthNames = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
+
+// Palette anni
+const yearColors = [
+  '#3ed6a0','#2eaab5','#5b8af5','#f5c542','#f57c42','#e85d8a','#c471e5','#42d7f5','#a8e063','#ff6b6b'
+];
+// Palette stazioni
+const stationPalette = [
+  '#2eaab5','#3ed6a0','#f5c542','#f57c42','#e85d8a','#5b8af5','#c471e5','#42d7f5','#a8e063','#ff6b6b','#9ad4e8'
+];
+
+const fmt = (v, d=1) => (Number(v ?? 0)).toFixed(d);
+const isoDate = d => d.toISOString().split('T')[0];
+
+// ===== CACHE DATA =====
+// cache[station][year] = { daily: {time:[], sum:[]}, monthly: [12 values] }
+const cache = {};
+const cacheYearlyStats = {}; // [station][year] = {total, wetDays, max24, monthlyMm:[12]}
+
+// ===== FETCH =====
+async function fetchYear(lat, lon, year) {
+  const start = `${year}-01-01`;
+  const end = (year === currentYear) ? isoDate(new Date()) : `${year}-12-31`;
+  const url = `https://historical-forecast-api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
+    `&start_date=${start}&end_date=${end}&daily=precipitation_sum&timezone=Europe/Rome`;
+  const r = await fetch(url);
+  if(!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+
+async function ensureData(stationName) {
+  if(cache[stationName]) return;
+  cache[stationName] = {};
+  cacheYearlyStats[stationName] = {};
+  const [lat, lon] = locations[stationName];
+  for(const y of years) {
+    let data;
+    try { data = await fetchYear(lat, lon, y); } catch(e){ console.warn(e); continue; }
+    const times = data?.daily?.time || [];
+    const sums = data?.daily?.precipitation_sum || [];
+
+    // daily cumsum
+    const cumsum = [];
+    let running = 0;
+    for(let i=0;i<sums.length;i++){running+=Number(sums[i]??0);cumsum.push(running);}
+
+    // monthly totals
+    const monthly = new Array(12).fill(0);
+    for(let i=0;i<times.length;i++){
+      const m = parseInt(times[i].split('-')[1]) - 1;
+      monthly[m] += Number(sums[i]??0);
+    }
+
+    const total = sums.reduce((a,b)=>a+Number(b||0),0);
+    const wetDays = sums.filter(v=>Number(v||0)>=0.1).length;
+    const max24 = Math.max(0, ...sums.map(v=>Number(v||0)));
+
+    cache[stationName][y] = { times, sums, cumsum, monthly };
+    cacheYearlyStats[stationName][y] = { total, wetDays, max24, monthly };
+  }
+}
+
+// ===== TABS =====
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('tab-'+tab.dataset.tab).classList.add('active');
+  });
+});
+
+// ===== POPULATE SELECTS =====
+function populateStationSelect(id, defaultIdx=0) {
+  const sel = document.getElementById(id);
+  sel.innerHTML = '';
+  stationNames.forEach((n,i) => {
+    const opt = document.createElement('option');
+    opt.value = n; opt.textContent = n;
+    sel.appendChild(opt);
+  });
+  sel.selectedIndex = defaultIdx;
+}
+['cumuStation','hmStation','mensStation','statsStation','evtStation','topStation'].forEach(id => populateStationSelect(id));
+
+// Populate year toggles for cumulate
+function buildCumuYearToggles() {
+  const bar = document.getElementById('cumuYearToggle');
+  bar.innerHTML='';
+  years.forEach((y,i) => {
+    const btn = document.createElement('button');
+    btn.className='year-btn on'; btn.textContent=y; btn.dataset.year=y;
+    btn.style.borderColor = yearColors[i % yearColors.length];
+    btn.addEventListener('click', () => {
+      btn.classList.toggle('on');
+      renderCumulate();
+    });
+    bar.appendChild(btn);
+  });
+}
+buildCumuYearToggles();
+
+// Populate confronto anno select
+const confAnnoSel = document.getElementById('confAnno');
+years.forEach(y => { const o=document.createElement('option');o.value=y;o.textContent=y;confAnnoSel.appendChild(o); });
+confAnnoSel.value = currentYear;
+
+// ===== CHARTS =====
+Chart.defaults.color = '#8096b4';
+Chart.defaults.borderColor = '#1e2f47';
+
+const chartInstances = {};
+function destroyChart(id) { if(chartInstances[id]){chartInstances[id].destroy();delete chartInstances[id];} }
+
+// ===== CUMULATE CHART =====
+async function renderCumulate() {
+  const station = document.getElementById('cumuStation').value;
+  const normalize = document.getElementById('cumuNorm').value === '1';
+  const thick = Number(document.getElementById('cumuThick').value);
+  const activeYears = [...document.querySelectorAll('#cumuYearToggle .year-btn.on')].map(b=>Number(b.dataset.year));
+
+  await ensureData(station);
+
+  destroyChart('cumulate');
+  const ctx = document.getElementById('chartCumulate').getContext('2d');
+
+  const datasets = activeYears.map((y, i) => {
+    const d = cache[station][y];
+    if(!d) return null;
+    const total = d.cumsum[d.cumsum.length-1] || 1;
+    const yVals = d.cumsum.map((v,idx) => ({
+      x: idx+1,  // day of year
+      y: normalize ? (v/total*100) : v
+    }));
+    const col = yearColors[years.indexOf(y) % yearColors.length];
+    return {
+      label: String(y),
+      data: yVals,
+      borderColor: col,
+      backgroundColor: 'transparent',
+      borderWidth: thick,
+      pointRadius: 0,
+      tension: 0.3,
+      parsing: false
+    };
+  }).filter(Boolean);
+
+  chartInstances['cumulate'] = new Chart(ctx, {
+    type:'line',
+    data:{ datasets },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      interaction:{mode:'index',intersect:false},
+      scales:{
+        x:{
+          type:'linear', min:1, max:366,
+          title:{display:true, text:'Giorno dell\'anno', color:'#8096b4'},
+          ticks:{
+            callback(v){
+              const doy = [1,32,60,91,121,152,182,213,244,274,305,335];
+              const mn  = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
+              const i = doy.indexOf(v); return i>=0?mn[i]:'';
+            },
+            maxTicksLimit:12, color:'#8096b4'
+          },
+          grid:{color:'#1e2f47'}
+        },
+        y:{
+          title:{display:true, text: normalize?'% cumulata':'mm cumulati', color:'#8096b4'},
+          grid:{color:'#1e2f47'}
+        }
+      },
+      plugins:{
+        legend:{
+          labels:{color:'#e8eef8', usePointStyle:true, pointStyleWidth:16, font:{weight:'bold'}}
+        },
+        tooltip:{
+          callbacks:{
+            title(items){return `Giorno ${items[0]?.parsed?.x ?? '--'}`;},
+            label(item){return ` ${item.dataset.label}: ${fmt(item.parsed.y,1)}${normalize?'%':' mm'}`;}
+          }
+        }
+      }
+    }
+  });
+}
+
+// ===== HEATMAP =====
+function mmToColor(val, maxVal) {
+  // 0=dark blue → max=dark red
+  const stops = [
+    [0, [11, 26, 107]],
+    [0.25, [29, 111, 164]],
+    [0.5, [46, 170, 181]],
+    [0.7, [62, 214, 160]],
+    [0.85, [255, 224, 102]],
+    [0.95, [255, 127, 39]],
+    [1.0, [196, 0, 0]]
+  ];
+  const t = Math.max(0, Math.min(1, maxVal ? val/maxVal : 0));
+  for(let i=0;i<stops.length-1;i++){
+    const [t0,c0]=stops[i], [t1,c1]=stops[i+1];
+    if(t>=t0&&t<=t1){
+      const f=(t-t0)/(t1-t0);
+      return `rgb(${Math.round(c0[0]+(c1[0]-c0[0])*f)},${Math.round(c0[1]+(c1[1]-c0[1])*f)},${Math.round(c0[2]+(c1[2]-c0[2])*f)})`;
+    }
+  }
+  return '#c40000';
+}
+
+async function renderHeatmap() {
+  const station = document.getElementById('hmStation').value;
+  const scaleOpt = document.getElementById('hmScale').value;
+  const showVal = document.getElementById('hmShowVal').value === '1';
+  await ensureData(station);
+
+  let maxVal = 0;
+  if(scaleOpt === 'auto') {
+    years.forEach(y => {
+      const d = cacheYearlyStats[station][y];
+      if(d) maxVal = Math.max(maxVal, ...d.monthly);
+    });
+  } else {
+    maxVal = Number(scaleOpt);
+  }
+  document.getElementById('scaleMax').textContent = `${Math.round(maxVal)} mm`;
+
+  const container = document.getElementById('hmContainer');
+  // Header row with month names
+  let headerHTML = `<div class="hm-label-row"><div style="width:50px"></div>`;
+  monthNames.forEach(m => { headerHTML += `<div class="hm-label">${m}</div>`; });
+  headerHTML += '</div>';
+
+  let gridHTML = '';
+  years.forEach(y => {
+    const stats = cacheYearlyStats[station][y];
+    gridHTML += `<div style="display:flex;gap:3px;margin-bottom:3px;">
+      <div class="hm-year-label">${y}</div>`;
+    for(let m=0;m<12;m++){
+      const v = stats?.monthly?.[m] ?? 0;
+      const bg = mmToColor(v, maxVal);
+      const txt = showVal ? `${Math.round(v)}` : '';
+      gridHTML += `<div class="hm-cell" style="background:${bg}" title="${y} - ${monthNames[m]}: ${fmt(v,1)} mm">${txt}</div>`;
+    }
+    gridHTML += '</div>';
+  });
+
+  container.innerHTML = headerHTML + gridHTML;
+}
+
+// ===== MENSILI CHART =====
+async function renderMensili() {
+  const station = document.getElementById('mensStation').value;
+  const type = document.getElementById('mensType').value;
+  await ensureData(station);
+
+  // Compute per-month stats across years
+  const monthData = Array.from({length:12}, (_,m) => {
+    const vals = years.map(y => cacheYearlyStats[station][y]?.monthly?.[m] ?? null).filter(v=>v!==null);
+    if(!vals.length) return {mean:0,std:0,min:0,max:0};
+    const mean = vals.reduce((a,b)=>a+b,0)/vals.length;
+    const std = Math.sqrt(vals.reduce((a,b)=>a+(b-mean)**2,0)/vals.length);
+    const min = Math.min(...vals), max = Math.max(...vals);
+    return {mean,std,min,max};
+  });
+
+  destroyChart('mensili');
+  const ctx = document.getElementById('chartMensili').getContext('2d');
+  chartInstances['mensili'] = new Chart(ctx,{
+    type:'bar',
+    data:{
+      labels: monthNames,
+      datasets:[
+        {
+          label:'Media mensile (mm)',
+          data: monthData.map(d=>d.mean),
+          backgroundColor: monthData.map((_,i) => `hsla(${180+i*15},60%,55%,0.75)`),
+          borderColor: monthData.map((_,i) => `hsl(${180+i*15},70%,60%)`),
+          borderWidth:1.5, borderRadius:4,
+          errorBars: type==='bar' ? monthData.reduce((o,d,i)=>{o[monthNames[i]]={plus:d.std,minus:d.std};return o;},{}) : undefined
+        },
+        {
+          label:'Massimo storico',
+          data: monthData.map(d=>d.max),
+          type:'line', borderColor:'#f57c42', borderWidth:2, pointRadius:5,
+          pointBackgroundColor:'#f57c42', fill:false, tension:0.3
+        },
+        {
+          label:'Minimo storico',
+          data: monthData.map(d=>d.min),
+          type:'line', borderColor:'#5b8af5', borderWidth:2, pointRadius:5,
+          pointBackgroundColor:'#5b8af5', fill:false, tension:0.3
+        }
+      ]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      scales:{
+        y:{title:{display:true,text:'mm',color:'#8096b4'},grid:{color:'#1e2f47'}},
+        x:{grid:{color:'#1e2f47'}}
+      },
+      plugins:{
+        legend:{labels:{color:'#e8eef8',usePointStyle:true}},
+        tooltip:{mode:'index',intersect:false,callbacks:{label:item=>`${item.dataset.label}: ${fmt(item.raw,1)} mm`}}
+      }
+    }
+  });
+}
+
+// ===== STATS GRID =====
+async function renderStats() {
+  const station = document.getElementById('statsStation').value;
+  await ensureData(station);
+  const allTotals = years.map(y=>cacheYearlyStats[station][y]?.total).filter(v=>v!=null);
+  const allWet = years.map(y=>cacheYearlyStats[station][y]?.wetDays).filter(v=>v!=null);
+  const allMax24 = years.map(y=>cacheYearlyStats[station][y]?.max24).filter(v=>v!=null);
+  const meanTotal = allTotals.reduce((a,b)=>a+b,0)/allTotals.length;
+  const maxTotal = Math.max(...allTotals), minTotal = Math.min(...allTotals);
+  const maxYear = years[allTotals.indexOf(maxTotal)], minYear = years[allTotals.indexOf(minTotal)];
+  const meanWet = allWet.reduce((a,b)=>a+b,0)/allWet.length;
+  const maxSingle = Math.max(...allMax24);
+  const maxSingleYear = years[allMax24.indexOf(maxSingle)];
+  const [,, alt] = locations[station];
+  document.getElementById('statsGrid').innerHTML = `
+    <div class="stat-card"><div class="stat-label">Media annua</div><div class="stat-value">${fmt(meanTotal,0)}</div><div class="stat-sub">mm/anno (${firstYear}–${currentYear})</div></div>
+    <div class="stat-card"><div class="stat-label">Anno più piovoso</div><div class="stat-value">${maxYear}</div><div class="stat-sub">${fmt(maxTotal,0)} mm</div></div>
+    <div class="stat-card"><div class="stat-label">Anno più secco</div><div class="stat-value">${minYear}</div><div class="stat-sub">${fmt(minTotal,0)} mm</div></div>
+    <div class="stat-card"><div class="stat-label">Media giorni piovosi</div><div class="stat-value">${fmt(meanWet,0)}</div><div class="stat-sub">gg/anno con ≥ 0.1 mm</div></div>
+    <div class="stat-card"><div class="stat-label">Massimo giornaliero</div><div class="stat-value">${fmt(maxSingle,0)}</div><div class="stat-sub">mm in un giorno (${maxSingleYear})</div></div>
+    <div class="stat-card"><div class="stat-label">Altitudine</div><div class="stat-value">${alt}</div><div class="stat-sub">m s.l.m.</div></div>
+  `;
+}
+
+// ===== EVENTI CHART =====
+async function renderEventi() {
+  const station = document.getElementById('evtStation').value;
+  const thresh = Number(document.getElementById('evtThresh').value);
+  await ensureData(station);
+
+  const counts = years.map(y => {
+    const d = cache[station][y];
+    if(!d) return 0;
+    return d.sums.filter(v=>Number(v||0)>=thresh).length;
+  });
+
+  destroyChart('eventi');
+  const ctx = document.getElementById('chartEventi').getContext('2d');
+  chartInstances['eventi'] = new Chart(ctx,{
+    type:'bar',
+    data:{
+      labels:years,
+      datasets:[{
+        label:`Giorni con pioggia ≥ ${thresh} mm`,
+        data:counts,
+        backgroundColor:'rgba(46,170,181,0.65)',
+        borderColor:'#2eaab5', borderWidth:2, borderRadius:5
+      }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      scales:{
+        y:{title:{display:true,text:'Numero di giorni',color:'#8096b4'},grid:{color:'#1e2f47'},beginAtZero:true},
+        x:{grid:{color:'#1e2f47'}}
+      },
+      plugins:{legend:{labels:{color:'#e8eef8'}},tooltip:{callbacks:{label:item=>`${item.raw} giorni`}}}
+    }
+  });
+}
+
+// ===== TOP EVENTS TABLE =====
+async function renderTopTable() {
+  const station = document.getElementById('topStation').value;
+  await ensureData(station);
+  const events = [];
+  years.forEach(y => {
+    const d = cache[station][y];
+    if(!d) return;
+    d.sums.forEach((v,i)=>{ if(Number(v||0)>0) events.push({date:d.times[i],mm:Number(v||0)}); });
+  });
+  events.sort((a,b)=>b.mm-a.mm);
+  const top = events.slice(0,10);
+  let html = `<table style="width:100%;border-collapse:collapse;font-size:13px">
+    <thead><tr style="background:#1d2f47"><th style="padding:8px;text-align:left;color:#2eaab5">Pos</th><th style="padding:8px;color:#2eaab5">Data</th><th style="padding:8px;color:#2eaab5">mm</th></tr></thead><tbody>`;
+  top.forEach((e,i)=>{
+    const medals=['🥇','🥈','🥉'];
+    html+=`<tr style="border-bottom:1px solid #1e2f47">
+      <td style="padding:7px 8px">${medals[i]||i+1}</td>
+      <td style="padding:7px 8px;font-family:monospace">${e.date}</td>
+      <td style="padding:7px 8px;font-weight:700;color:${i===0?'#f57c42':'#e8eef8'}">${fmt(e.mm,1)} mm</td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  document.getElementById('topTable').innerHTML = html;
+}
+
+// ===== CONFRONTO STAZIONI =====
+let confActiveStations = new Set(stationNames);
+let trendActiveStations = new Set(stationNames.slice(0,5));
+
+function buildChips(barId, activeSet, palette, onToggle) {
+  const bar = document.getElementById(barId);
+  bar.innerHTML='';
+  stationNames.forEach((n,i)=>{
+    const chip=document.createElement('div');
+    chip.className='chip'+(activeSet.has(n)?' active':'');
+    chip.textContent=n;
+    chip.style.background=palette[i%palette.length];
+    chip.style.borderColor=palette[i%palette.length];
+    chip.addEventListener('click',()=>{
+      if(activeSet.has(n)) activeSet.delete(n); else activeSet.add(n);
+      chip.classList.toggle('active');
+      onToggle();
+    });
+    bar.appendChild(chip);
+  });
+}
+buildChips('confChipBar', confActiveStations, stationPalette, renderConfronto);
+buildChips('trendChipBar', trendActiveStations, stationPalette, renderTrend);
+
+async function renderConfronto() {
+  const year = Number(document.getElementById('confAnno').value);
+  const metric = document.getElementById('confMetric').value;
+  const activeNames = stationNames.filter(n=>confActiveStations.has(n));
+
+  // ensure data for all
+  await Promise.all(activeNames.map(n=>ensureData(n)));
+
+  const vals = activeNames.map(n=>{
+    const s=cacheYearlyStats[n][year];
+    if(!s) return 0;
+    if(metric==='total') return s.total;
+    if(metric==='wetdays') return s.wetDays;
+    return s.max24;
+  });
+  const metricLabel = metric==='total'?'Totale annuo (mm)':metric==='wetdays'?'Giorni piovosi':'Massimo giornaliero (mm)';
+
+  destroyChart('confronto');
+  const ctx=document.getElementById('chartConfronto').getContext('2d');
+  chartInstances['confronto'] = new Chart(ctx,{
+    type:'bar',
+    data:{
+      labels:activeNames,
+      datasets:[{
+        label:`${year} — ${metricLabel}`,
+        data:vals,
+        backgroundColor:activeNames.map((_,i)=>stationPalette[stationNames.indexOf(activeNames[i])%stationPalette.length]+'bb'),
+        borderColor:activeNames.map((_,i)=>stationPalette[stationNames.indexOf(activeNames[i])%stationPalette.length]),
+        borderWidth:2, borderRadius:6
+      }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false, indexAxis:'y',
+      scales:{
+        x:{title:{display:true,text:metricLabel,color:'#8096b4'},grid:{color:'#1e2f47'},beginAtZero:true},
+        y:{grid:{color:'#1e2f47'}}
+      },
+      plugins:{legend:{labels:{color:'#e8eef8'}},tooltip:{callbacks:{label:item=>`${fmt(item.raw,1)}${metric==='wetdays'?' giorni':' mm'}`}}}
+    }
+  });
+}
+
+async function renderTrend() {
+  const activeNames = stationNames.filter(n=>trendActiveStations.has(n));
+  await Promise.all(activeNames.map(n=>ensureData(n)));
+
+  const datasets = activeNames.map(name=>{
+    const i = stationNames.indexOf(name);
+    const col = stationPalette[i%stationPalette.length];
+    return {
+      label: name,
+      data: years.map(y=>cacheYearlyStats[name][y]?.total??null),
+      borderColor: col,
+      backgroundColor: col+'22',
+      borderWidth:2.5, pointRadius:5, pointBackgroundColor:col,
+      tension:0.3, fill:false
+    };
+  });
+
+  destroyChart('trend');
+  const ctx=document.getElementById('chartTrend').getContext('2d');
+  chartInstances['trend'] = new Chart(ctx,{
+    type:'line',
+    data:{labels:years, datasets},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      interaction:{mode:'index',intersect:false},
+      scales:{
+        y:{title:{display:true,text:'mm totali annui',color:'#8096b4'},grid:{color:'#1e2f47'}},
+        x:{grid:{color:'#1e2f47'}}
+      },
+      plugins:{legend:{labels:{color:'#e8eef8',usePointStyle:true}},tooltip:{callbacks:{label:item=>`${item.dataset.label}: ${fmt(item.raw,0)} mm`}}}
+    }
+  });
+}
+
+// ===== EVENT LISTENERS =====
+document.getElementById('cumuStation').addEventListener('change', renderCumulate);
+document.getElementById('cumuNorm').addEventListener('change', renderCumulate);
+document.getElementById('cumuThick').addEventListener('change', renderCumulate);
+
+document.getElementById('hmStation').addEventListener('change', renderHeatmap);
+document.getElementById('hmScale').addEventListener('change', renderHeatmap);
+document.getElementById('hmShowVal').addEventListener('change', renderHeatmap);
+
+document.getElementById('mensStation').addEventListener('change', renderMensili);
+document.getElementById('mensType').addEventListener('change', renderMensili);
+document.getElementById('statsStation').addEventListener('change', renderStats);
+
+document.getElementById('evtStation').addEventListener('change', renderEventi);
+document.getElementById('evtThresh').addEventListener('change', renderEventi);
+document.getElementById('topStation').addEventListener('change', renderTopTable);
+
+document.getElementById('confAnno').addEventListener('change', renderConfronto);
+document.getElementById('confMetric').addEventListener('change', renderConfronto);
+
+// ===== INIT =====
+(async () => {
+  const overlay = document.getElementById('loadingOverlay');
+  const detail = document.getElementById('loadingDetail');
+
+  // Pre-load all stations sequentially so UI is ready
+  for(let i=0; i<stationNames.length; i++) {
+    const name = stationNames[i];
+    detail.textContent = `${name} (${i+1}/${stationNames.length})`;
+    await ensureData(name);
+  }
+
+  overlay.style.display = 'none';
+
+  // Initial renders
+  await renderCumulate();
+  await renderHeatmap();
+  await renderMensili();
+  await renderStats();
+  await renderEventi();
+  await renderTopTable();
+  await renderConfronto();
+  await renderTrend();
+})();
+</script>
+</body>
+</html>
